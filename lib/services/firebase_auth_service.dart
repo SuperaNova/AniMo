@@ -6,6 +6,22 @@ class FirebaseAuthService {
   final fb_auth.FirebaseAuth _firebaseAuth = fb_auth.FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // Set persistence for Android devices
+  Future<void> setPersistence(bool rememberMe) async {
+    try {
+      if (rememberMe) {
+        // LOCAL persistence keeps the user logged in across app restarts
+        await _firebaseAuth.setPersistence(fb_auth.Persistence.LOCAL);
+      } else {
+        // SESSION persistence will clear auth state when app is closed
+        await _firebaseAuth.setPersistence(fb_auth.Persistence.SESSION);
+      }
+    } catch (e) {
+      print("Error setting persistence: $e");
+      // Even if persistence setting fails, we can still proceed with sign in
+    }
+  }
+
   // Stream to listen to authentication state changes
   Stream<AppUser?> get authStateChanges {
     return _firebaseAuth.authStateChanges().asyncMap((fb_auth.User? firebaseUser) async {
@@ -115,8 +131,12 @@ class FirebaseAuthService {
   Future<AppUser?> signInWithEmailAndPassword({
     required String email,
     required String password,
+    bool rememberMe = false,
   }) async {
     try {
+      // Set persistence before signing in
+      await setPersistence(rememberMe);
+
       final fb_auth.UserCredential userCredential = await _firebaseAuth.signInWithEmailAndPassword(
         email: email,
         password: password,
@@ -129,10 +149,8 @@ class FirebaseAuthService {
         if (userDoc.exists) {
           return AppUser.fromFirestore(userDoc);
         } else {
-           // This should ideally not happen for a user who successfully signs in.
-           // It implies their Firestore record is missing.
-          print("Error: User signed in but Firestore document missing for UID: ${firebaseUser.uid}");
-          throw Exception("User data not found. Please contact support.");
+           print("Error: User signed in but Firestore document missing for UID: ${firebaseUser.uid}");
+           throw Exception("User data not found. Please contact support.");
         }
       }
       return null;

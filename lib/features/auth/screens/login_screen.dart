@@ -34,6 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await authService.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
+          rememberMe: _rememberMe,
         );
         // Navigation will be handled by AuthWrapper if login is successful
         // No need to manually navigate here if AuthWrapper is set up correctly
