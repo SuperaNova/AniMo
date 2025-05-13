@@ -33,6 +33,30 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <!-- Firebase SDKs -->
+  <!-- It's recommended to use specific versions matching your Firebase SDK version -->
+  <!-- This is a general example, flutterfire configure usually injects versioned SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-firestore-compat.js"></script>
+  <!-- Add other SDKs as needed e.g. firebase-storage-compat.js -->
+
+  <script>
+    // Your web app's Firebase configuration
+    // This configuration is from your lib/firebase_options.dart
+    var firebaseConfig = {
+      apiKey: "AIzaSyAR5DVlegGD2Nse7_YUY9ErD22-wzvgDX0",
+      authDomain: "animo-9fffb.firebaseapp.com",
+      projectId: "animo-9fffb",
+      storageBucket: "animo-9fffb.firebasestorage.app",
+      messagingSenderId: "861879318023",
+      appId: "1:861879318023:web:1c758fa8d2192fd72f1ca2",
+      measurementId: "G-XJ8BBLJ769"
+    };
+    // Initialize Firebase
+    firebase.initializeApp(firebaseConfig);
+  </script>
+
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>
