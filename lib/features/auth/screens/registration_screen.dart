@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../core/models/app_user.dart'; // Assuming AppUser and UserRole are here
+import 'package:animo/core/models/app_user.dart';// Assuming AppUser and UserRole are here
 import '../../../services/firebase_auth_service.dart';
 // import '../../widgets/loading_dialog.dart'; // Will create this later if needed, or use a simple CircularProgressIndicator
 // import 'login_screen.dart'; // For navigation if needed

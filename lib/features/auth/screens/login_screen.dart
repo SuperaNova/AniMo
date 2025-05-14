@@ -21,6 +21,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _errorMessage;
+  bool _rememberMe = false;
 
   Future<void> _loginUser() async {
     if (_formKey.currentState!.validate()) {
@@ -33,6 +34,7 @@ class _LoginScreenState extends State<LoginScreen> {
         await authService.signInWithEmailAndPassword(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
+          rememberMe: _rememberMe,
         );
         // Navigation will be handled by AuthWrapper if login is successful
         // No need to manually navigate here if AuthWrapper is set up correctly
@@ -141,6 +143,24 @@ class _LoginScreenState extends State<LoginScreen> {
                       textAlign: TextAlign.center,
                     ),
                   ),
+                // Remember me checkbox
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8.0),
+                      child: Text("Remember me"),
+                    ),
+                    Checkbox(
+                      value: _rememberMe,
+                      onChanged: (bool? value) {
+                        setState(() {
+                          _rememberMe = value ?? false;
+                        });
+                      },
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 12),
                 _isLoading
                     ? const Center(child: Padding(
