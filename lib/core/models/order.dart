@@ -1,285 +1,478 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import './location_data.dart'; // For pickup and delivery locations
+import './produce_listing.dart'; // For ProduceCategory, ProduceListingStatus if needed directly
 
 // Nested class for Delivery Fee Details
 class DeliveryFeeDetails {
   final double baseFee;
-  final double? distanceKm;
+  final double distanceKm;
   final double distanceSurcharge;
   final double? estimatedWeightKg;
   final double weightSurcharge;
-  final double specialHandlingSurcharge; // Default to 0
-  final double grossDeliveryFee;
-  final double platformCommission; // AniMo's cut
-  final double driverPayout; // What driver earns
+  final double grossDeliveryFee; // base + distance + weight
+  final double platformCommissionRate; // e.g. 0.10 for 10%
+  final double platformCommissionAmount; // grossDeliveryFee * platformCommissionRate
+  final double driverPayout; // grossDeliveryFee - platformCommissionAmount
 
   DeliveryFeeDetails({
     required this.baseFee,
-    this.distanceKm,
+    required this.distanceKm,
     required this.distanceSurcharge,
     this.estimatedWeightKg,
     required this.weightSurcharge,
-    this.specialHandlingSurcharge = 0.0,
     required this.grossDeliveryFee,
-    this.platformCommission = 0.0, // Default to 0 for MVP
+    required this.platformCommissionRate,
+    required this.platformCommissionAmount,
     required this.driverPayout,
   });
 
-  factory DeliveryFeeDetails.fromMap(Map<String, dynamic>? map) {
-    if (map == null) {
-      // Return default/empty object or throw error
-      return DeliveryFeeDetails(baseFee: 0, distanceSurcharge: 0, weightSurcharge: 0, grossDeliveryFee: 0, driverPayout: 0);
-    }
+  factory DeliveryFeeDetails.fromMap(Map<String, dynamic> map) {
     return DeliveryFeeDetails(
-      baseFee: (map['baseFee'] as num?)?.toDouble() ?? 0.0,
-      distanceKm: (map['distanceKm'] as num?)?.toDouble(),
-      distanceSurcharge: (map['distanceSurcharge'] as num?)?.toDouble() ?? 0.0,
+      baseFee: (map['baseFee'] as num).toDouble(),
+      distanceKm: (map['distanceKm'] as num).toDouble(),
+      distanceSurcharge: (map['distanceSurcharge'] as num).toDouble(),
       estimatedWeightKg: (map['estimatedWeightKg'] as num?)?.toDouble(),
-      weightSurcharge: (map['weightSurcharge'] as num?)?.toDouble() ?? 0.0,
-      specialHandlingSurcharge: (map['specialHandlingSurcharge'] as num?)?.toDouble() ?? 0.0,
-      grossDeliveryFee: (map['grossDeliveryFee'] as num?)?.toDouble() ?? 0.0,
-      platformCommission: (map['platformCommission'] as num?)?.toDouble() ?? 0.0,
-      driverPayout: (map['driverPayout'] as num?)?.toDouble() ?? 0.0,
+      weightSurcharge: (map['weightSurcharge'] as num).toDouble(),
+      grossDeliveryFee: (map['grossDeliveryFee'] as num).toDouble(),
+      platformCommissionRate: (map['platformCommissionRate'] as num).toDouble(),
+      platformCommissionAmount: (map['platformCommissionAmount'] as num).toDouble(),
+      driverPayout: (map['driverPayout'] as num).toDouble(),
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
       'baseFee': baseFee,
-      if (distanceKm != null) 'distanceKm': distanceKm,
+      'distanceKm': distanceKm,
       'distanceSurcharge': distanceSurcharge,
       if (estimatedWeightKg != null) 'estimatedWeightKg': estimatedWeightKg,
       'weightSurcharge': weightSurcharge,
-      'specialHandlingSurcharge': specialHandlingSurcharge,
       'grossDeliveryFee': grossDeliveryFee,
-      'platformCommission': platformCommission,
+      'platformCommissionRate': platformCommissionRate,
+      'platformCommissionAmount': platformCommissionAmount,
       'driverPayout': driverPayout,
     };
   }
 }
 
+// Enums for Order
 enum OrderStatus {
-  pending_farmer_confirmation, // Initial state after AI match or direct buyer request from listing
-  farmer_rejected,
-  // awaiting_payment, // If pre-payment features are added in future
-  awaiting_driver_assignment, // Farmer confirmed (or direct order implies this if farmer action not needed first)
-  driver_assigned,
-  awaiting_farmer_goods_handover, // Driver at pickup (Platform-Guaranteed Farmer Payment model)
-  out_for_delivery, // Farmer confirmed goods handover to driver
-  delivery_confirmed_by_driver, // Driver confirms drop-off
-  delivery_confirmed_by_buyer, // Buyer confirms receipt of goods & COD
-  completed, // All steps finalized, payments settled
-  cancelled_by_buyer,
-  cancelled_by_farmer,
-  cancelled_by_system, // e.g., if listing expires, no driver found in time
+  pending_confirmation('Pending Confirmation'), // Initial status after creation from match
+  confirmed_by_platform('Confirmed by Platform'), // AniMo admin confirms, ready for driver
+  searching_for_driver('Searching for Driver'),
+  driver_assigned('Driver Assigned'),
+  driver_en_route_to_pickup('Driver En Route to Pickup'),
+  at_pickup_location('Driver at Pickup Location'),
+  picked_up('Produce Picked Up'),
+  en_route_to_delivery('En Route to Delivery'),
+  at_delivery_location('Driver at Delivery Location'),
+  delivered('Delivered'), // Buyer confirms receipt
+  completed('Completed'), // Payment settled, farmer paid (final success state)
+  cancelled_by_buyer('Cancelled by Buyer'),
+  cancelled_by_farmer('Cancelled by Farmer'),
+  cancelled_by_platform('Cancelled by Platform'), // e.g., due to no driver, issue
+  failed_delivery('Failed Delivery'), // Driver attempted but could not deliver
+  disputed('Disputed');
+
+  const OrderStatus(this.displayName);
+  final String displayName;
+}
+
+enum PaymentType {
+  cod('Cash on Delivery'),
+  online('Online Payment');
+
+  const PaymentType(this.displayName);
+  final String displayName;
+}
+
+enum PaymentStatus {
+  pending('Pending'), // For COD: pending collection. For Online: pending gateway confirmation.
+  collected_from_buyer('Collected from Buyer (COD)'), // Driver has cash
+  paid_to_farmer('Paid to Farmer'),
+  paid_to_driver('Paid to Driver'),
+  platform_fee_collected('Platform Fee Collected'),
+  refunded('Refunded'),
+  failed('Payment Failed');
+
+  const PaymentStatus(this.displayName);
+  final String displayName;
 }
 
 String orderStatusToString(OrderStatus status) {
-  return status.name;
+  return status.displayName;
 }
 
 OrderStatus orderStatusFromString(String? statusString) {
   return OrderStatus.values.firstWhere(
         (e) => e.name == statusString,
-        orElse: () => OrderStatus.pending_farmer_confirmation, // Default or error
+        orElse: () => OrderStatus.pending_confirmation, // Default or error
       );
 }
 
 class Order {
-  final String id; // Document ID
-  final Timestamp orderCreationDateTime;
-
-  final String buyerId;
-  final String? buyerName;
+  final String? id;
+  final String produceListingId;
   final String farmerId;
-  final String? farmerName;
-  final String listingId;
+  final String buyerId;
+  final String? matchSuggestionId; // Optional, if order came from a suggestion
 
-  // Snapshot of produce details
+  // Snapshot of produce details at time of order
   final String produceName;
-  final String produceCategory;
+  final ProduceCategory produceCategory;
+  final String? customProduceCategory;
   final double orderedQuantity;
-  final String orderedQuantityUnit;
-  
-  final double totalGoodsPrice; // Price for the produce itself (farmer's earning portion)
-  final String? currency;
+  final String unit;
+  final double pricePerUnit;
+  final String currency;
+  final double totalGoodsPrice; // orderedQuantity * pricePerUnit
 
-  final LocationData pickupLocation;
+  final LocationData pickupLocation; // Snapshot or direct reference
   final LocationData deliveryLocation;
 
   final OrderStatus status;
+  final List<OrderStatusUpdate> statusHistory;
 
-  // Timestamps for key events
-  final Timestamp? farmerConfirmationTimestamp;
-  final Timestamp? driverAssignmentTimestamp;
-  final Timestamp? farmerGoodsHandoverTimestamp; // When farmer confirms goods given to driver
-  final Timestamp? actualPickupTimeByDriver; // When driver confirms they picked up (can be same as above)
-  final Timestamp? estimatedDeliveryTimeFromMaps; // Calculated by Maps API
-  final Timestamp? actualDeliveryTimeByDriver; // Driver confirms drop-off
-  final Timestamp? buyerConfirmationTimestamp; // Buyer confirms receipt
-  final Timestamp? completionTimestamp;
-  final Timestamp? cancellationTimestamp;
+  final String? assignedDriverId;
+  final DeliveryFeeDetails? deliveryFeeDetails;
+  final double totalOrderAmount; // totalGoodsPrice + (deliveryFeeDetails?.grossDeliveryFee ?? 0)
+  final double codAmountToCollectFromBuyer; // If COD, this is totalOrderAmount
 
-  final String? driverId;
-  final String? driverName;
+  final PaymentType paymentType;
+  final PaymentStatus paymentStatusGoods; // For the goods part, farmer payout
+  final PaymentStatus paymentStatusDelivery; // For the delivery part, driver payout
+  final String? paymentTransactionId; // For online payments
 
-  final DeliveryFeeDetails? deliveryFeeDetails; // Will be populated by a cloud function
-  final double? codAmountToCollectFromBuyer; // totalGoodsPrice + deliveryFeeDetails.driverPayout
+  final DateTime createdAt;
+  final DateTime lastUpdated;
+  final DateTime? estimatedPickupTime;
+  final DateTime? estimatedDeliveryTime;
+  final DateTime? actualPickupTime;
+  final DateTime? actualDeliveryTime;
 
-  // Payment Details (for Platform-Guaranteed Farmer Payment model)
-  final String paymentMethod; // e.g., "COD_PlatformGuaranteed"
-  final String? paymentStatusGoods; // Tracks farmer's portion: e.g., "pending_platform_payout", "farmer_paid_by_platform"
-  final String? paymentStatusDelivery; // Tracks driver's portion: e.g., "pending_driver_remittance", "driver_remittance_received" (for platform to get its share back from driver's COD collection)
-  final String? overallPaymentStatus; // e.g., "pending_COD_collection", "partially_settled", "fully_settled"
-  final Timestamp? farmerPaidByPlatformTimestamp;
+  final String? buyerNotes;
+  final String? farmerNotes;
+  final String? driverNotes;
+  final String? platformNotes; // For admin/system notes
 
-
-  final String? originatingBuyerRequestId;
-  final String? cancellationReason;
-  final int? satisfactionRating; // Buyer's rating for this order (1-5)
-  final String? satisfactionNotes;
-
-  final String? notesForDriver;
-  final String? notesForBuyer;
-  final String? internalSystemNotes;
-  final Timestamp lastUpdated;
+  final int? buyerRatingForFarmer;
+  final String? buyerReviewForFarmer;
+  final int? buyerRatingForDriver;
+  final String? buyerReviewForDriver;
+  final int? farmerRatingForBuyer;
+  final String? farmerReviewForBuyer;
+  final int? farmerRatingForDriver;
+  final String? farmerReviewForDriver;
+  final int? driverRatingForBuyer;
+  final String? driverReviewForBuyer;
+  final int? driverRatingForFarmer;
+  final String? driverReviewForFarmer;
 
   Order({
-    required this.id,
-    required this.orderCreationDateTime,
-    required this.buyerId,
-    this.buyerName,
+    this.id,
+    required this.produceListingId,
     required this.farmerId,
-    this.farmerName,
-    required this.listingId,
+    required this.buyerId,
+    this.matchSuggestionId,
     required this.produceName,
     required this.produceCategory,
+    this.customProduceCategory,
     required this.orderedQuantity,
-    required this.orderedQuantityUnit,
+    required this.unit,
+    required this.pricePerUnit,
+    required this.currency,
     required this.totalGoodsPrice,
-    this.currency,
     required this.pickupLocation,
     required this.deliveryLocation,
     required this.status,
-    this.farmerConfirmationTimestamp,
-    this.driverAssignmentTimestamp,
-    this.farmerGoodsHandoverTimestamp,
-    this.actualPickupTimeByDriver,
-    this.estimatedDeliveryTimeFromMaps,
-    this.actualDeliveryTimeByDriver,
-    this.buyerConfirmationTimestamp,
-    this.completionTimestamp,
-    this.cancellationTimestamp,
-    this.driverId,
-    this.driverName,
+    this.statusHistory = const [],
+    this.assignedDriverId,
     this.deliveryFeeDetails,
-    this.codAmountToCollectFromBuyer,
-    this.paymentMethod = "COD_PlatformGuaranteed",
-    this.paymentStatusGoods,
-    this.paymentStatusDelivery,
-    this.overallPaymentStatus,
-    this.farmerPaidByPlatformTimestamp,
-    this.originatingBuyerRequestId,
-    this.cancellationReason,
-    this.satisfactionRating,
-    this.satisfactionNotes,
-    this.notesForDriver,
-    this.notesForBuyer,
-    this.internalSystemNotes,
+    required this.totalOrderAmount,
+    required this.codAmountToCollectFromBuyer,
+    required this.paymentType,
+    required this.paymentStatusGoods,
+    required this.paymentStatusDelivery,
+    this.paymentTransactionId,
+    required this.createdAt,
     required this.lastUpdated,
+    this.estimatedPickupTime,
+    this.estimatedDeliveryTime,
+    this.actualPickupTime,
+    this.actualDeliveryTime,
+    this.buyerNotes,
+    this.farmerNotes,
+    this.driverNotes,
+    this.platformNotes,
+    this.buyerRatingForFarmer,
+    this.buyerReviewForFarmer,
+    this.buyerRatingForDriver,
+    this.buyerReviewForDriver,
+    this.farmerRatingForBuyer,
+    this.farmerReviewForBuyer,
+    this.farmerRatingForDriver,
+    this.farmerReviewForDriver,
+    this.driverRatingForBuyer,
+    this.driverReviewForBuyer,
+    this.driverRatingForFarmer,
+    this.driverReviewForFarmer,
   });
 
-  factory Order.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data()!;
+  factory Order.fromFirestore(Map<String, dynamic> data, String id) {
     return Order(
-      id: doc.id,
-      orderCreationDateTime: data['orderCreationDateTime'] as Timestamp? ?? Timestamp.now(),
-      buyerId: data['buyerId'] as String,
-      buyerName: data['buyerName'] as String?,
+      id: id,
+      produceListingId: data['produceListingId'] as String,
       farmerId: data['farmerId'] as String,
-      farmerName: data['farmerName'] as String?,
-      listingId: data['listingId'] as String,
+      buyerId: data['buyerId'] as String,
+      matchSuggestionId: data['matchSuggestionId'] as String?,
       produceName: data['produceName'] as String,
-      produceCategory: data['produceCategory'] as String,
+      produceCategory: ProduceCategory.values.firstWhere(
+        (e) => e.name == data['produceCategory'],
+        orElse: () => ProduceCategory.other, // Default or handle error
+      ),
+      customProduceCategory: data['customProduceCategory'] as String?,
       orderedQuantity: (data['orderedQuantity'] as num).toDouble(),
-      orderedQuantityUnit: data['orderedQuantityUnit'] as String,
+      unit: data['unit'] as String,
+      pricePerUnit: (data['pricePerUnit'] as num).toDouble(),
+      currency: data['currency'] as String,
       totalGoodsPrice: (data['totalGoodsPrice'] as num).toDouble(),
-      currency: data['currency'] as String?,
-      pickupLocation: LocationData.fromMap(data['pickupLocation'] as Map<String, dynamic>?),
-      deliveryLocation: LocationData.fromMap(data['deliveryLocation'] as Map<String, dynamic>?),
-      status: orderStatusFromString(data['status'] as String?),
-      farmerConfirmationTimestamp: data['farmerConfirmationTimestamp'] as Timestamp?,
-      driverAssignmentTimestamp: data['driverAssignmentTimestamp'] as Timestamp?,
-      farmerGoodsHandoverTimestamp: data['farmerGoodsHandoverTimestamp'] as Timestamp?,
-      actualPickupTimeByDriver: data['actualPickupTimeByDriver'] as Timestamp?,
-      estimatedDeliveryTimeFromMaps: data['estimatedDeliveryTimeFromMaps'] as Timestamp?,
-      actualDeliveryTimeByDriver: data['actualDeliveryTimeByDriver'] as Timestamp?,
-      buyerConfirmationTimestamp: data['buyerConfirmationTimestamp'] as Timestamp?,
-      completionTimestamp: data['completionTimestamp'] as Timestamp?,
-      cancellationTimestamp: data['cancellationTimestamp'] as Timestamp?,
-      driverId: data['driverId'] as String?,
-      driverName: data['driverName'] as String?,
-      deliveryFeeDetails: DeliveryFeeDetails.fromMap(data['deliveryFeeDetails'] as Map<String, dynamic>?),
-      codAmountToCollectFromBuyer: (data['codAmountToCollectFromBuyer'] as num?)?.toDouble(),
-      paymentMethod: data['paymentMethod'] as String? ?? "COD_PlatformGuaranteed",
-      paymentStatusGoods: data['paymentStatusGoods'] as String?,
-      paymentStatusDelivery: data['paymentStatusDelivery'] as String?,
-      overallPaymentStatus: data['overallPaymentStatus'] as String?,
-      farmerPaidByPlatformTimestamp: data['farmerPaidByPlatformTimestamp'] as Timestamp?,
-      originatingBuyerRequestId: data['originatingBuyerRequestId'] as String?,
-      cancellationReason: data['cancellationReason'] as String?,
-      satisfactionRating: data['satisfactionRating'] as int?,
-      satisfactionNotes: data['satisfactionNotes'] as String?,
-      notesForDriver: data['notesForDriver'] as String?,
-      notesForBuyer: data['notesForBuyer'] as String?,
-      internalSystemNotes: data['internalSystemNotes'] as String?,
-      lastUpdated: data['lastUpdated'] as Timestamp? ?? Timestamp.now(),
+      pickupLocation: LocationData.fromMap(data['pickupLocation'] as Map<String, dynamic>),
+      deliveryLocation: LocationData.fromMap(data['deliveryLocation'] as Map<String, dynamic>),
+      status: OrderStatus.values.firstWhere(
+        (e) => e.name == data['status'],
+        orElse: () => OrderStatus.pending_confirmation,
+      ),
+      statusHistory: (data['statusHistory'] as List<dynamic>? ?? [])
+          .map((item) => OrderStatusUpdate.fromMap(item as Map<String, dynamic>))
+          .toList(),
+      assignedDriverId: data['assignedDriverId'] as String?,
+      deliveryFeeDetails: data['deliveryFeeDetails'] != null
+          ? DeliveryFeeDetails.fromMap(data['deliveryFeeDetails'] as Map<String, dynamic>)
+          : null,
+      totalOrderAmount: (data['totalOrderAmount'] as num).toDouble(),
+      codAmountToCollectFromBuyer: (data['codAmountToCollectFromBuyer'] as num).toDouble(),
+      paymentType: PaymentType.values.firstWhere(
+        (e) => e.name == data['paymentType'],
+        orElse: () => PaymentType.cod,
+      ),
+      paymentStatusGoods: PaymentStatus.values.firstWhere(
+        (e) => e.name == data['paymentStatusGoods'],
+        orElse: () => PaymentStatus.pending,
+      ),
+      paymentStatusDelivery: PaymentStatus.values.firstWhere(
+        (e) => e.name == data['paymentStatusDelivery'],
+        orElse: () => PaymentStatus.pending,
+      ),
+      paymentTransactionId: data['paymentTransactionId'] as String?,
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+      lastUpdated: (data['lastUpdated'] as Timestamp).toDate(),
+      estimatedPickupTime: (data['estimatedPickupTime'] as Timestamp?)?.toDate(),
+      estimatedDeliveryTime: (data['estimatedDeliveryTime'] as Timestamp?)?.toDate(),
+      actualPickupTime: (data['actualPickupTime'] as Timestamp?)?.toDate(),
+      actualDeliveryTime: (data['actualDeliveryTime'] as Timestamp?)?.toDate(),
+      buyerNotes: data['buyerNotes'] as String?,
+      farmerNotes: data['farmerNotes'] as String?,
+      driverNotes: data['driverNotes'] as String?,
+      platformNotes: data['platformNotes'] as String?,
+      buyerRatingForFarmer: data['buyerRatingForFarmer'] as int?,
+      buyerReviewForFarmer: data['buyerReviewForFarmer'] as String?,
+      buyerRatingForDriver: data['buyerRatingForDriver'] as int?,
+      buyerReviewForDriver: data['buyerReviewForDriver'] as String?,
+      farmerRatingForBuyer: data['farmerRatingForBuyer'] as int?,
+      farmerReviewForBuyer: data['farmerReviewForBuyer'] as String?,
+      farmerRatingForDriver: data['farmerRatingForDriver'] as int?,
+      farmerReviewForDriver: data['farmerReviewForDriver'] as String?,
+      driverRatingForBuyer: data['driverRatingForBuyer'] as int?,
+      driverReviewForBuyer: data['driverReviewForBuyer'] as String?,
+      driverRatingForFarmer: data['driverRatingForFarmer'] as int?,
+      driverReviewForFarmer: data['driverReviewForFarmer'] as String?,
     );
   }
 
   Map<String, dynamic> toFirestore() {
     return {
-      'orderCreationDateTime': orderCreationDateTime,
-      'buyerId': buyerId,
-      if (buyerName != null) 'buyerName': buyerName,
+      'produceListingId': produceListingId,
       'farmerId': farmerId,
-      if (farmerName != null) 'farmerName': farmerName,
-      'listingId': listingId,
+      'buyerId': buyerId,
+      if (matchSuggestionId != null) 'matchSuggestionId': matchSuggestionId,
       'produceName': produceName,
-      'produceCategory': produceCategory,
+      'produceCategory': produceCategory.name,
+      if (customProduceCategory != null) 'customProduceCategory': customProduceCategory,
       'orderedQuantity': orderedQuantity,
-      'orderedQuantityUnit': orderedQuantityUnit,
+      'unit': unit,
+      'pricePerUnit': pricePerUnit,
+      'currency': currency,
       'totalGoodsPrice': totalGoodsPrice,
-      if (currency != null) 'currency': currency,
       'pickupLocation': pickupLocation.toMap(),
       'deliveryLocation': deliveryLocation.toMap(),
-      'status': orderStatusToString(status),
-      if (farmerConfirmationTimestamp != null) 'farmerConfirmationTimestamp': farmerConfirmationTimestamp,
-      if (driverAssignmentTimestamp != null) 'driverAssignmentTimestamp': driverAssignmentTimestamp,
-      if (farmerGoodsHandoverTimestamp != null) 'farmerGoodsHandoverTimestamp': farmerGoodsHandoverTimestamp,
-      if (actualPickupTimeByDriver != null) 'actualPickupTimeByDriver': actualPickupTimeByDriver,
-      if (estimatedDeliveryTimeFromMaps != null) 'estimatedDeliveryTimeFromMaps': estimatedDeliveryTimeFromMaps,
-      if (actualDeliveryTimeByDriver != null) 'actualDeliveryTimeByDriver': actualDeliveryTimeByDriver,
-      if (buyerConfirmationTimestamp != null) 'buyerConfirmationTimestamp': buyerConfirmationTimestamp,
-      if (completionTimestamp != null) 'completionTimestamp': completionTimestamp,
-      if (cancellationTimestamp != null) 'cancellationTimestamp': cancellationTimestamp,
-      if (driverId != null) 'driverId': driverId,
-      if (driverName != null) 'driverName': driverName,
+      'status': status.name,
+      'statusHistory': statusHistory.map((item) => item.toMap()).toList(),
+      if (assignedDriverId != null) 'assignedDriverId': assignedDriverId,
       if (deliveryFeeDetails != null) 'deliveryFeeDetails': deliveryFeeDetails!.toMap(),
-      if (codAmountToCollectFromBuyer != null) 'codAmountToCollectFromBuyer': codAmountToCollectFromBuyer,
-      'paymentMethod': paymentMethod,
-      if (paymentStatusGoods != null) 'paymentStatusGoods': paymentStatusGoods,
-      if (paymentStatusDelivery != null) 'paymentStatusDelivery': paymentStatusDelivery,
-      if (overallPaymentStatus != null) 'overallPaymentStatus': overallPaymentStatus,
-      if (farmerPaidByPlatformTimestamp != null) 'farmerPaidByPlatformTimestamp': farmerPaidByPlatformTimestamp,
-      if (originatingBuyerRequestId != null) 'originatingBuyerRequestId': originatingBuyerRequestId,
-      if (cancellationReason != null) 'cancellationReason': cancellationReason,
-      if (satisfactionRating != null) 'satisfactionRating': satisfactionRating,
-      if (satisfactionNotes != null) 'satisfactionNotes': satisfactionNotes,
-      if (notesForDriver != null) 'notesForDriver': notesForDriver,
-      if (notesForBuyer != null) 'notesForBuyer': notesForBuyer,
-      if (internalSystemNotes != null) 'internalSystemNotes': internalSystemNotes,
-      'lastUpdated': lastUpdated,
+      'totalOrderAmount': totalOrderAmount,
+      'codAmountToCollectFromBuyer': codAmountToCollectFromBuyer,
+      'paymentType': paymentType.name,
+      'paymentStatusGoods': paymentStatusGoods.name,
+      'paymentStatusDelivery': paymentStatusDelivery.name,
+      if (paymentTransactionId != null) 'paymentTransactionId': paymentTransactionId,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'lastUpdated': Timestamp.fromDate(lastUpdated),
+      if (estimatedPickupTime != null) 'estimatedPickupTime': Timestamp.fromDate(estimatedPickupTime!),
+      if (estimatedDeliveryTime != null) 'estimatedDeliveryTime': Timestamp.fromDate(estimatedDeliveryTime!),
+      if (actualPickupTime != null) 'actualPickupTime': Timestamp.fromDate(actualPickupTime!),
+      if (actualDeliveryTime != null) 'actualDeliveryTime': Timestamp.fromDate(actualDeliveryTime!),
+      if (buyerNotes != null) 'buyerNotes': buyerNotes,
+      if (farmerNotes != null) 'farmerNotes': farmerNotes,
+      if (driverNotes != null) 'driverNotes': driverNotes,
+      if (platformNotes != null) 'platformNotes': platformNotes,
+      if (buyerRatingForFarmer != null) 'buyerRatingForFarmer': buyerRatingForFarmer,
+      if (buyerReviewForFarmer != null) 'buyerReviewForFarmer': buyerReviewForFarmer,
+      if (buyerRatingForDriver != null) 'buyerRatingForDriver': buyerRatingForDriver,
+      if (buyerReviewForDriver != null) 'buyerReviewForDriver': buyerReviewForDriver,
+      if (farmerRatingForBuyer != null) 'farmerRatingForBuyer': farmerRatingForBuyer,
+      if (farmerReviewForBuyer != null) 'farmerReviewForBuyer': farmerReviewForBuyer,
+      if (farmerRatingForDriver != null) 'farmerRatingForDriver': farmerRatingForDriver,
+      if (farmerReviewForDriver != null) 'farmerReviewForDriver': farmerReviewForDriver,
+      if (driverRatingForBuyer != null) 'driverRatingForBuyer': driverRatingForBuyer,
+      if (driverReviewForBuyer != null) 'driverReviewForBuyer': driverReviewForBuyer,
+      if (driverRatingForFarmer != null) 'driverRatingForFarmer': driverRatingForFarmer,
+      if (driverReviewForFarmer != null) 'driverReviewForFarmer': driverReviewForFarmer,
+    };
+  }
+  
+  Order copyWith({
+    String? id,
+    String? produceListingId,
+    String? farmerId,
+    String? buyerId,
+    String? matchSuggestionId,
+    String? produceName,
+    ProduceCategory? produceCategory,
+    String? customProduceCategory,
+    double? orderedQuantity,
+    String? unit,
+    double? pricePerUnit,
+    String? currency,
+    double? totalGoodsPrice,
+    LocationData? pickupLocation,
+    LocationData? deliveryLocation,
+    OrderStatus? status,
+    List<OrderStatusUpdate>? statusHistory,
+    String? assignedDriverId,
+    DeliveryFeeDetails? deliveryFeeDetails,
+    double? totalOrderAmount,
+    double? codAmountToCollectFromBuyer,
+    PaymentType? paymentType,
+    PaymentStatus? paymentStatusGoods,
+    PaymentStatus? paymentStatusDelivery,
+    String? paymentTransactionId,
+    DateTime? createdAt,
+    DateTime? lastUpdated,
+    DateTime? estimatedPickupTime,
+    DateTime? estimatedDeliveryTime,
+    DateTime? actualPickupTime,
+    DateTime? actualDeliveryTime,
+    String? buyerNotes,
+    String? farmerNotes,
+    String? driverNotes,
+    String? platformNotes,
+    int? buyerRatingForFarmer,
+    String? buyerReviewForFarmer,
+    int? buyerRatingForDriver,
+    String? buyerReviewForDriver,
+    int? farmerRatingForBuyer,
+    String? farmerReviewForBuyer,
+    int? farmerRatingForDriver,
+    String? farmerReviewForDriver,
+    int? driverRatingForBuyer,
+    String? driverReviewForBuyer,
+    int? driverRatingForFarmer,
+    String? driverReviewForFarmer,
+  }) {
+    return Order(
+      id: id ?? this.id,
+      produceListingId: produceListingId ?? this.produceListingId,
+      farmerId: farmerId ?? this.farmerId,
+      buyerId: buyerId ?? this.buyerId,
+      matchSuggestionId: matchSuggestionId ?? this.matchSuggestionId,
+      produceName: produceName ?? this.produceName,
+      produceCategory: produceCategory ?? this.produceCategory,
+      customProduceCategory: customProduceCategory ?? this.customProduceCategory,
+      orderedQuantity: orderedQuantity ?? this.orderedQuantity,
+      unit: unit ?? this.unit,
+      pricePerUnit: pricePerUnit ?? this.pricePerUnit,
+      currency: currency ?? this.currency,
+      totalGoodsPrice: totalGoodsPrice ?? this.totalGoodsPrice,
+      pickupLocation: pickupLocation ?? this.pickupLocation,
+      deliveryLocation: deliveryLocation ?? this.deliveryLocation,
+      status: status ?? this.status,
+      statusHistory: statusHistory ?? this.statusHistory,
+      assignedDriverId: assignedDriverId ?? this.assignedDriverId,
+      deliveryFeeDetails: deliveryFeeDetails ?? this.deliveryFeeDetails,
+      totalOrderAmount: totalOrderAmount ?? this.totalOrderAmount,
+      codAmountToCollectFromBuyer: codAmountToCollectFromBuyer ?? this.codAmountToCollectFromBuyer,
+      paymentType: paymentType ?? this.paymentType,
+      paymentStatusGoods: paymentStatusGoods ?? this.paymentStatusGoods,
+      paymentStatusDelivery: paymentStatusDelivery ?? this.paymentStatusDelivery,
+      paymentTransactionId: paymentTransactionId ?? this.paymentTransactionId,
+      createdAt: createdAt ?? this.createdAt,
+      lastUpdated: lastUpdated ?? this.lastUpdated,
+      estimatedPickupTime: estimatedPickupTime ?? this.estimatedPickupTime,
+      estimatedDeliveryTime: estimatedDeliveryTime ?? this.estimatedDeliveryTime,
+      actualPickupTime: actualPickupTime ?? this.actualPickupTime,
+      actualDeliveryTime: actualDeliveryTime ?? this.actualDeliveryTime,
+      buyerNotes: buyerNotes ?? this.buyerNotes,
+      farmerNotes: farmerNotes ?? this.farmerNotes,
+      driverNotes: driverNotes ?? this.driverNotes,
+      platformNotes: platformNotes ?? this.platformNotes,
+      buyerRatingForFarmer: buyerRatingForFarmer ?? this.buyerRatingForFarmer,
+      buyerReviewForFarmer: buyerReviewForFarmer ?? this.buyerReviewForFarmer,
+      buyerRatingForDriver: buyerRatingForDriver ?? this.buyerRatingForDriver,
+      buyerReviewForDriver: buyerReviewForDriver ?? this.buyerReviewForDriver,
+      farmerRatingForBuyer: farmerRatingForBuyer ?? this.farmerRatingForBuyer,
+      farmerReviewForBuyer: farmerReviewForBuyer ?? this.farmerReviewForBuyer,
+      farmerRatingForDriver: farmerRatingForDriver ?? this.farmerRatingForDriver,
+      farmerReviewForDriver: farmerReviewForDriver ?? this.farmerReviewForDriver,
+      driverRatingForBuyer: driverRatingForBuyer ?? this.driverRatingForBuyer,
+      driverReviewForBuyer: driverReviewForBuyer ?? this.driverReviewForBuyer,
+      driverRatingForFarmer: driverRatingForFarmer ?? this.driverRatingForFarmer,
+      driverReviewForFarmer: driverReviewForFarmer ?? this.driverReviewForFarmer,
+    );
+  }
+}
+
+// Helper class for status history (if not already defined elsewhere)
+class OrderStatusUpdate {
+  final OrderStatus status;
+  final DateTime timestamp;
+  final String? updatedBy; // UID of user/system that made the update
+  final String? reason; // Optional reason for status change
+
+  OrderStatusUpdate({
+    required this.status,
+    required this.timestamp,
+    this.updatedBy,
+    this.reason,
+  });
+
+  factory OrderStatusUpdate.fromMap(Map<String, dynamic> map) {
+    return OrderStatusUpdate(
+      status: OrderStatus.values.firstWhere(
+        (e) => e.name == map['status'],
+        orElse: () => OrderStatus.pending_confirmation, // Default status
+      ),
+      timestamp: (map['timestamp'] as Timestamp).toDate(),
+      updatedBy: map['updatedBy'] as String?,
+      reason: map['reason'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'status': status.name,
+      'timestamp': Timestamp.fromDate(timestamp),
+      if (updatedBy != null) 'updatedBy': updatedBy,
+      if (reason != null) 'reason': reason,
     };
   }
 } 

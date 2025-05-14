@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart'; // For date formatting
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import '../../../core/screens/map_picker_screen.dart';
 
 import '../../../core/models/location_data.dart';
 import '../../../core/models/produce_listing.dart';
@@ -34,12 +36,11 @@ class _AddEditProduceListingScreenState
 
   // Text Editing Controllers
   late TextEditingController _produceNameController;
-  late TextEditingController _produceCategoryController;
+  ProduceCategory _selectedProduceCategory = ProduceCategory.vegetable; // Default
   late TextEditingController _customProduceCategoryController;
   late TextEditingController _initialQuantityController;
   late TextEditingController _quantityUnitController;
   late TextEditingController _estimatedWeightKgController;
-  late TextEditingController _estimatedPieceCountController;
   late TextEditingController _pricePerUnitController;
   late TextEditingController _currencyController;
   late TextEditingController _shelfLifeDaysController;
@@ -49,6 +50,10 @@ class _AddEditProduceListingScreenState
   late TextEditingController _addressHintController;
   late TextEditingController _barangayController;
   late TextEditingController _municipalityController;
+
+  // ADDED: State for selected map location
+  LatLng? _selectedPickupLatLng;
+  String? _selectedPickupAddressString;
 
   DateTime? _harvestDateTime;
 
@@ -62,35 +67,57 @@ class _AddEditProduceListingScreenState
     final listing = widget.existingListing;
 
     _produceNameController = TextEditingController(text: listing?.produceName ?? '');
-    _produceCategoryController = TextEditingController(text: listing?.produceCategory ?? '');
-    _customProduceCategoryController = TextEditingController(text: listing?.customProduceCategory ?? '');
+    if (listing != null) {
+      try {
+        _selectedProduceCategory = listing.produceCategory;
+      } catch (e) {
+        print("Error parsing ProduceCategory from existing listing: ${listing.produceCategory}. Defaulting. Error: $e");
+        _selectedProduceCategory = ProduceCategory.vegetable; // Default on error
+      }
+      _customProduceCategoryController = TextEditingController(text: listing.customProduceCategory ?? '');
+    } else {
+      _selectedProduceCategory = ProduceCategory.vegetable; // Default for new listing
+      _customProduceCategoryController = TextEditingController();
+    }
+    
     _initialQuantityController = TextEditingController(text: listing?.initialQuantity.toString() ?? '');
-    _quantityUnitController = TextEditingController(text: listing?.quantityUnit ?? '');
-    _estimatedWeightKgController = TextEditingController(text: listing?.estimatedWeightKg?.toString() ?? '');
-    _estimatedPieceCountController = TextEditingController(text: listing?.estimatedPieceCount?.toString() ?? '');
-    _pricePerUnitController = TextEditingController(text: listing?.pricePerUnit?.toString() ?? '');
+    _quantityUnitController = TextEditingController(text: listing?.unit ?? '');
+    _estimatedWeightKgController = TextEditingController(text: listing?.estimatedWeightKgPerUnit?.toString() ?? '');
+    _pricePerUnitController = TextEditingController(text: listing?.pricePerUnit.toString() ?? '');
     _currencyController = TextEditingController(text: listing?.currency ?? 'PHP');
-    _shelfLifeDaysController = TextEditingController(text: listing?.shelfLifeDays.toString() ?? '');
-    _notesController = TextEditingController(text: listing?.notes ?? '');
+    _shelfLifeDaysController = TextEditingController();
+    if (listing?.expiryTimestamp != null && listing?.harvestTimestamp != null) {
+        final duration = listing!.expiryTimestamp!.difference(listing.harvestTimestamp!);
+        _shelfLifeDaysController.text = duration.inDays.toString();
+    }
+    _notesController = TextEditingController(text: listing?.description ?? '');
 
-    _harvestDateTime = listing?.harvestDateTime.toDate();
+    _harvestDateTime = listing?.harvestTimestamp;
 
     _addressHintController = TextEditingController(text: listing?.pickupLocation.addressHint ?? '');
     _barangayController = TextEditingController(text: listing?.pickupLocation.barangay ?? '');
     _municipalityController = TextEditingController(text: listing?.pickupLocation.municipality ?? '');
+    
+    // ADDED: Initialize _selectedPickupLatLng if editing and valid coordinates exist
+    if (listing != null && 
+        listing.pickupLocation.latitude != 0.0 && 
+        listing.pickupLocation.longitude != 0.0) {
+      _selectedPickupLatLng = LatLng(listing.pickupLocation.latitude, listing.pickupLocation.longitude);
+      // Optionally, you could try to pre-fill _selectedPickupAddressString here if you store it
+      // or perform a reverse geocode, but that might be slow for initState.
+      // For now, we'll let the map picker handle showing the address when opened.
+    }
+
     // For lat/lng, if editing, they would come from listing.pickupLocation.latitude/longitude
-    // For a new entry, these might be set via a map picker or geocoding later.
   }
 
   @override
   void dispose() {
     _produceNameController.dispose();
-    _produceCategoryController.dispose();
     _customProduceCategoryController.dispose();
     _initialQuantityController.dispose();
     _quantityUnitController.dispose();
     _estimatedWeightKgController.dispose();
-    _estimatedPieceCountController.dispose();
     _pricePerUnitController.dispose();
     _currencyController.dispose();
     _shelfLifeDaysController.dispose();
@@ -149,56 +176,62 @@ class _AddEditProduceListingScreenState
     final shelfLifeDays = int.tryParse(_shelfLifeDaysController.text);
     final pricePerUnit = _pricePerUnitController.text.isNotEmpty ? double.tryParse(_pricePerUnitController.text) : null;
     final estimatedWeightKg = _estimatedWeightKgController.text.isNotEmpty ? double.tryParse(_estimatedWeightKgController.text) : null;
-    final estimatedPieceCount = _estimatedPieceCountController.text.isNotEmpty ? int.tryParse(_estimatedPieceCountController.text) : null;
 
-    if (initialQuantity == null || shelfLifeDays == null) {
+    if (initialQuantity == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Initial quantity and shelf life must be valid numbers.')),
+        const SnackBar(content: Text('Initial quantity must be a valid number.')),
       );
-      if (mounted) {
+       if (mounted) {
+        setState(() => _isLoading = false);
+      }
+      return;
+    }
+    if (shelfLifeDays == null || shelfLifeDays <=0) {
+       ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Shelf life must be a positive valid number of days.')),
+      );
+       if (mounted) {
         setState(() => _isLoading = false);
       }
       return;
     }
     
     final pickupLocation = LocationData(
-        latitude: widget.existingListing?.pickupLocation.latitude ?? 0.0, 
-        longitude: widget.existingListing?.pickupLocation.longitude ?? 0.0, 
+        // MODIFIED: Use _selectedPickupLatLng if available
+        latitude: _selectedPickupLatLng?.latitude ?? widget.existingListing?.pickupLocation.latitude ?? 0.0, 
+        longitude: _selectedPickupLatLng?.longitude ?? widget.existingListing?.pickupLocation.longitude ?? 0.0, 
         addressHint: _addressHintController.text.trim(),
         barangay: _barangayController.text.trim(),
         municipality: _municipalityController.text.trim(),
     );
 
     final now = Timestamp.now();
-    final harvestTimestamp = Timestamp.fromDate(_harvestDateTime!);
-    final expiryTimestamp = Timestamp.fromDate(
-      _harvestDateTime!.add(Duration(days: shelfLifeDays)),
-    );
+    final harvestTimestampAsDateTime = _harvestDateTime!;
+    final expiryTimestampDateTime = harvestTimestampAsDateTime.add(Duration(days: shelfLifeDays));
 
     ProduceListing listing = ProduceListing(
-      id: widget.existingListing?.id ?? '',
+      id: widget.existingListing?.id,
       farmerId: widget.farmerId,
       farmerName: widget.farmerName ?? appUser?.displayName,
       produceName: _produceNameController.text.trim(),
-      produceCategory: _produceCategoryController.text.trim(),
-      customProduceCategory: _customProduceCategoryController.text.trim().isNotEmpty 
-          ? _customProduceCategoryController.text.trim() 
+      produceCategory: _selectedProduceCategory,
+      customProduceCategory: _selectedProduceCategory == ProduceCategory.other && _customProduceCategoryController.text.trim().isNotEmpty
+          ? _customProduceCategoryController.text.trim()
           : null,
+      quantity: initialQuantity,
       initialQuantity: initialQuantity,
-      quantityUnit: _quantityUnitController.text.trim(),
-      estimatedWeightKg: estimatedWeightKg,
-      estimatedPieceCount: estimatedPieceCount,
-      pricePerUnit: pricePerUnit,
+      unit: _quantityUnitController.text.trim(),
+      estimatedWeightKgPerUnit: estimatedWeightKg,
+      pricePerUnit: pricePerUnit ?? 0.0,
       currency: _currencyController.text.trim(),
-      harvestDateTime: harvestTimestamp,
-      shelfLifeDays: shelfLifeDays,
-      expiryTimestamp: expiryTimestamp,
-      listingDateTime: widget.existingListing?.listingDateTime ?? now,
+      harvestTimestamp: harvestTimestampAsDateTime,
+      expiryTimestamp: expiryTimestampDateTime,
+      createdAt: widget.existingListing?.createdAt ?? now.toDate(),
       pickupLocation: pickupLocation,
       photoUrls: widget.existingListing?.photoUrls ?? [],
       status: widget.existingListing?.status ?? ProduceListingStatus.available,
-      notes: _notesController.text.trim(),
-      lastUpdated: now,
+      description: _notesController.text.trim().isNotEmpty ? _notesController.text.trim() : null,
+      lastUpdated: now.toDate(),
       quantityCommitted: widget.existingListing?.quantityCommitted ?? 0.0,
       quantitySoldAndDelivered: widget.existingListing?.quantitySoldAndDelivered ?? 0.0,
     );
@@ -208,10 +241,10 @@ class _AddEditProduceListingScreenState
       if (_isEditing) {
         Map<String, dynamic> updates = listing.toFirestore();
         updates.remove('farmerId'); 
-        updates.remove('listingDateTime'); 
+        updates.remove('createdAt'); 
         
         bool success = await produceListingService.updateProduceListing(
-          listingId: widget.existingListing!.id,
+          listingId: widget.existingListing!.id!,
           updates: updates,
         );
         resultMessage = success ? 'Listing updated successfully!' : 'Failed to update listing.';
@@ -264,17 +297,38 @@ class _AddEditProduceListingScreenState
                       validator: (value) => value == null || value.isEmpty ? 'Enter produce name' : null,
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _produceCategoryController,
-                      decoration: const InputDecoration(labelText: 'Produce Category', hintText: 'e.g., Fruit, Vegetable, Herb', border: OutlineInputBorder()),
-                      validator: (value) => value == null || value.isEmpty ? 'Enter category' : null,
+                    DropdownButtonFormField<ProduceCategory>(
+                      value: _selectedProduceCategory,
+                      decoration: const InputDecoration(labelText: 'Produce Category'),
+                      items: ProduceCategory.values.map((ProduceCategory category) {
+                        return DropdownMenuItem<ProduceCategory>(
+                          value: category,
+                          child: Text(category.displayName),
+                        );
+                      }).toList(),
+                      onChanged: (ProduceCategory? newValue) {
+                        setState(() {
+                          if (newValue != null) {
+                            _selectedProduceCategory = newValue;
+                          }
+                        });
+                      },
+                      validator: (value) => value == null ? 'Please select a category' : null,
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _customProduceCategoryController,
-                      decoration: const InputDecoration(labelText: 'Custom Category (if other)', border: OutlineInputBorder()),
-                    ),
-                    const SizedBox(height: 12),
+                    if (_selectedProduceCategory == ProduceCategory.other)
+                      TextFormField(
+                        controller: _customProduceCategoryController,
+                        decoration: const InputDecoration(labelText: 'Custom Category Name'),
+                        validator: (value) {
+                          if (_selectedProduceCategory == ProduceCategory.other && (value == null || value.isEmpty)) {
+                            return 'Please enter the custom category name';
+                          }
+                          return null;
+                        },
+                      ),
+                    if (_selectedProduceCategory == ProduceCategory.other)
+                      const SizedBox(height: 16.0),
                     Row(
                       children: [
                         Expanded(
@@ -337,6 +391,56 @@ class _AddEditProduceListingScreenState
                     ),
                     const SizedBox(height: 16),
                     const Text('Pickup Location Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    // ADDED: Button to open Map Picker and display selected address
+                    TextButton.icon(
+                      icon: const Icon(Icons.map_outlined),
+                      label: const Text('Select Pickup Location on Map'),
+                      onPressed: () async {
+                        final result = await Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => MapPickerScreen(
+                              initialPosition: _selectedPickupLatLng, 
+                            ),
+                          ),
+                        );
+
+                        if (result != null && result is Map<String, dynamic>) {
+                          setState(() {
+                            _selectedPickupLatLng = result['latlng'] as LatLng?;
+                            _selectedPickupAddressString = result['address'] as String?;
+                            // Optional: Try to parse and fill barangay/municipality from address string
+                            // This is complex and error-prone. For now, user manually confirms/edits fields.
+                            // Example of a simple attempt (might not be robust):
+                            // if (_selectedPickupAddressString != null) {
+                            //   var parts = _selectedPickupAddressString!.split(',');
+                            //   // This logic highly depends on the format of _selectedAddressString
+                            //   // and might need significant refinement.
+                            //   if (parts.length > 2) { 
+                            //      _barangayController.text = parts[parts.length - 3].trim(); // Example
+                            //      _municipalityController.text = parts[parts.length - 2].trim(); // Example
+                            //   }
+                            // }
+                          });
+                        }
+                      },
+                    ),
+                    if (_selectedPickupAddressString != null)
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text(
+                          'Map Selection: $_selectedPickupAddressString',
+                          style: TextStyle(color: Theme.of(context).primaryColor, fontStyle: FontStyle.italic),
+                        ),
+                      )
+                    else if (_selectedPickupLatLng != null)
+                       Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Text(
+                          'Map Selection: Lat: ${_selectedPickupLatLng!.latitude.toStringAsFixed(5)}, Lng: ${_selectedPickupLatLng!.longitude.toStringAsFixed(5)}',
+                          style: TextStyle(color: Theme.of(context).primaryColor, fontStyle: FontStyle.italic),
+                        ),
+                      ),
                     const SizedBox(height: 8),
                     TextFormField(
                         controller: _municipalityController,

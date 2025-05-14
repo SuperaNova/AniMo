@@ -21,7 +21,7 @@ BuyerRequestStatus buyerRequestStatusFromString(String? statusString) {
 }
 
 class BuyerRequest {
-  final String id; // Document ID
+  final String? id; // Document ID - Made nullable
   final String buyerId;
   final String? buyerName; // Denormalized
 
@@ -49,7 +49,7 @@ class BuyerRequest {
   final Timestamp lastUpdated;
 
   BuyerRequest({
-    required this.id,
+    this.id, // No longer required
     required this.buyerId,
     this.buyerName,
     required this.requestDateTime,
@@ -116,5 +116,49 @@ class BuyerRequest {
       'totalQuantityFulfilled': totalQuantityFulfilled,
       'lastUpdated': lastUpdated,
     };
+  }
+
+  BuyerRequest copyWith({
+    String? id, // Stays nullable
+    String? buyerId,
+    String? buyerName,
+    Timestamp? requestDateTime,
+    String? produceNeededName,
+    String? produceNeededCategory,
+    double? quantityNeeded,
+    String? quantityUnit,
+    LocationData? deliveryLocation,
+    Timestamp? deliveryDeadline,
+    double? priceRangeMinPerUnit,
+    double? priceRangeMaxPerUnit,
+    String? currency,
+    String? notesForFarmer,
+    BuyerRequestStatus? status,
+    bool? isAiMatchPreferred,
+    List<String>? fulfilledByOrderIds,
+    double? totalQuantityFulfilled,
+    Timestamp? lastUpdated,
+  }) {
+    return BuyerRequest(
+      id: id ?? this.id,
+      buyerId: buyerId ?? this.buyerId,
+      buyerName: buyerName ?? this.buyerName,
+      requestDateTime: requestDateTime ?? this.requestDateTime,
+      produceNeededName: produceNeededName ?? this.produceNeededName,
+      produceNeededCategory: produceNeededCategory ?? this.produceNeededCategory,
+      quantityNeeded: quantityNeeded ?? this.quantityNeeded,
+      quantityUnit: quantityUnit ?? this.quantityUnit,
+      deliveryLocation: deliveryLocation ?? this.deliveryLocation,
+      deliveryDeadline: deliveryDeadline ?? this.deliveryDeadline,
+      priceRangeMinPerUnit: priceRangeMinPerUnit ?? this.priceRangeMinPerUnit,
+      priceRangeMaxPerUnit: priceRangeMaxPerUnit ?? this.priceRangeMaxPerUnit,
+      currency: currency ?? this.currency,
+      notesForFarmer: notesForFarmer ?? this.notesForFarmer,
+      status: status ?? this.status,
+      isAiMatchPreferred: isAiMatchPreferred ?? this.isAiMatchPreferred,
+      fulfilledByOrderIds: fulfilledByOrderIds ?? this.fulfilledByOrderIds,
+      totalQuantityFulfilled: totalQuantityFulfilled ?? this.totalQuantityFulfilled,
+      lastUpdated: lastUpdated ?? this.lastUpdated,
+    );
   }
 } 

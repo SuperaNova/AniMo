@@ -35,7 +35,7 @@ class ProduceListingService {
         .map((snapshot) {
       return snapshot.docs
           .map((doc) => ProduceListing.fromFirestore(
-              doc as DocumentSnapshot<Map<String, dynamic>>))
+              doc.data() as Map<String, dynamic>, doc.id))
           .toList();
     }).handleError((error) {
       print('Error fetching farmer produce listings: $error');
@@ -49,8 +49,8 @@ class ProduceListingService {
     try {
       final DocumentSnapshot<Map<String, dynamic>> doc =
           await _firestore.collection(_collectionPath).doc(listingId).get();
-      if (doc.exists) {
-        return ProduceListing.fromFirestore(doc);
+      if (doc.exists && doc.data() != null) {
+        return ProduceListing.fromFirestore(doc.data()!, doc.id);
       }
       return null;
     } catch (e) {
@@ -105,7 +105,7 @@ class ProduceListingService {
 
   // Delete (Soft delete by updating status)
   Future<bool> deleteProduceListing(String listingId) async {
-     return await updateListingStatus(listingId, ProduceListingStatus.deleted);
+     return await updateListingStatus(listingId, ProduceListingStatus.delisted);
   }
 
   // TODO: Consider adding methods for:

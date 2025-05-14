@@ -1,15 +1,32 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import './location_data.dart'; // Import the new location_data.dart
+import 'package:flutter/foundation.dart'; // For debugPrint
 
 // Helper class for GeoPoint-like structure
 // class LocationData { ... MOVED TO location_data.dart ... }
 
+enum ProduceCategory {
+  vegetable('Vegetable'),
+  fruit('Fruit'),
+  herb('Herb'),
+  grain('Grain'),
+  processed('Processed Farm Product'), // e.g. dried mangoes, jams
+  other('Other');
+
+  const ProduceCategory(this.displayName);
+  final String displayName;
+}
+
 enum ProduceListingStatus {
-  available,
-  unavailable, // e.g. fully ordered or taken down by farmer
-  expired,
-  pending_approval, // if moderation is added
-  deleted // soft delete
+  available('Available'),
+  // pending_confirmation ('Pending Confirmation'), // If a match is made but not yet an order
+  committed('Committed to Order'), // Part or all quantity is committed
+  sold_out('Sold Out'), // All quantity sold and delivered
+  expired('Expired'),
+  delisted('Delisted by Farmer');
+
+  const ProduceListingStatus(this.displayName);
+  final String displayName;
 }
 
 String produceListingStatusToString(ProduceListingStatus status) {
@@ -25,96 +42,107 @@ ProduceListingStatus produceListingStatusFromString(String? statusString) {
 
 
 class ProduceListing {
-  final String id; // Document ID from Firestore
+  final String? id;
   final String farmerId;
-  final String? farmerName; // Denormalized
+  final String? farmerName; // Denormalized for easier display
   final String produceName;
-  final String produceCategory;
-  final String? customProduceCategory;
-  
-  final double initialQuantity;
-  final String quantityUnit;
-  final double? estimatedWeightKg;
-  final int? estimatedPieceCount;
-
-  final double? pricePerUnit;
-  final String? currency; // e.g., "PHP"
-
-  final Timestamp harvestDateTime;
-  final int shelfLifeDays;
-  final Timestamp expiryTimestamp; // Calculated: harvestDateTime + shelfLifeDays
-  
-  final Timestamp listingDateTime;
+  final ProduceCategory produceCategory;
+  final String? customProduceCategory; // If produceCategory is 'other'
+  final double quantity; // Current available quantity
+  final double initialQuantity; // Original quantity when listed
+  final String unit; // e.g., kg, piece, bundle, sack, kaing
+  final double? estimatedWeightKgPerUnit; // For non-standard units like 'sack' or 'piece'
+  final double pricePerUnit;
+  final String currency;
+  final String? description;
   final LocationData pickupLocation;
-  final List<String>? photoUrls; // URLs to images in Firebase Storage
-  
+  final List<String> photoUrls;
   final ProduceListingStatus status;
-  final String? notes;
-  final Timestamp lastUpdated;
-
-  // Fields for tracking quantity based on orders
-  final double quantityCommitted; // Committed in active orders
-  final double quantitySoldAndDelivered; // Sold and delivered from this listing
+  final DateTime? harvestTimestamp; // Optional
+  final DateTime? expiryTimestamp;
+  final DateTime createdAt;
+  final DateTime lastUpdated;
+  final double quantityCommitted; // Quantity tied up in active orders/accepted matches
+  final double quantitySoldAndDelivered; // Quantity successfully sold and delivered
 
   ProduceListing({
-    required this.id,
+    this.id,
     required this.farmerId,
     this.farmerName,
     required this.produceName,
     required this.produceCategory,
     this.customProduceCategory,
+    required this.quantity,
     required this.initialQuantity,
-    required this.quantityUnit,
-    this.estimatedWeightKg,
-    this.estimatedPieceCount,
-    this.pricePerUnit,
-    this.currency,
-    required this.harvestDateTime,
-    required this.shelfLifeDays,
-    required this.expiryTimestamp,
-    required this.listingDateTime,
+    required this.unit,
+    this.estimatedWeightKgPerUnit,
+    required this.pricePerUnit,
+    required this.currency,
+    this.description,
     required this.pickupLocation,
-    this.photoUrls,
+    this.photoUrls = const [],
     required this.status,
-    this.notes,
+    this.harvestTimestamp,
+    this.expiryTimestamp,
+    required this.createdAt,
     required this.lastUpdated,
-    this.quantityCommitted = 0.0,
-    this.quantitySoldAndDelivered = 0.0,
+    this.quantityCommitted = 0,
+    this.quantitySoldAndDelivered = 0,
   });
 
-  // Calculated property for current available quantity
-  double get currentAvailableQuantity {
-    double available = initialQuantity - quantityCommitted - quantitySoldAndDelivered;
-    return available < 0 ? 0 : available;
-  }
-
-  factory ProduceListing.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data()!;
-    return ProduceListing(
-      id: doc.id,
-      farmerId: data['farmerId'] as String,
-      farmerName: data['farmerName'] as String?,
-      produceName: data['produceName'] as String,
-      produceCategory: data['produceCategory'] as String,
-      customProduceCategory: data['customProduceCategory'] as String?,
-      initialQuantity: (data['initialQuantity'] as num).toDouble(),
-      quantityUnit: data['quantityUnit'] as String,
-      estimatedWeightKg: (data['estimatedWeightKg'] as num?)?.toDouble(),
-      estimatedPieceCount: data['estimatedPieceCount'] as int?,
-      pricePerUnit: (data['pricePerUnit'] as num?)?.toDouble(),
-      currency: data['currency'] as String?,
-      harvestDateTime: data['harvestDateTime'] as Timestamp,
-      shelfLifeDays: data['shelfLifeDays'] as int,
-      expiryTimestamp: data['expiryTimestamp'] as Timestamp,
-      listingDateTime: data['listingDateTime'] as Timestamp? ?? Timestamp.now(),
-      pickupLocation: LocationData.fromMap(data['pickupLocation'] as Map<String, dynamic>?),
-      photoUrls: (data['photoUrls'] as List<dynamic>?)?.map((e) => e as String).toList(),
-      status: produceListingStatusFromString(data['status'] as String?),
-      notes: data['notes'] as String?,
-      lastUpdated: data['lastUpdated'] as Timestamp? ?? Timestamp.now(),
-      quantityCommitted: (data['quantityCommitted'] as num?)?.toDouble() ?? 0.0,
-      quantitySoldAndDelivered: (data['quantitySoldAndDelivered'] as num?)?.toDouble() ?? 0.0,
-    );
+  factory ProduceListing.fromFirestore(Map<String, dynamic> data, String id) {
+    if (kDebugMode) {
+      debugPrint('Parsing ProduceListing (ID: $id): $data');
+    }
+    try {
+      return ProduceListing(
+        id: id,
+        farmerId: data['farmerId'] as String,
+        farmerName: data['farmerName'] as String?,
+        produceName: data['produceName'] as String,
+        produceCategory: ProduceCategory.values.firstWhere(
+          (e) => e.name == data['produceCategory'],
+          orElse: () {
+            if (kDebugMode) {
+              debugPrint('Error parsing produceCategory for $id: Value was ${data['produceCategory']}');
+            }
+            return ProduceCategory.other;
+          },
+        ),
+        customProduceCategory: data['customProduceCategory'] as String?,
+        quantity: (data['quantity'] as num).toDouble(),
+        initialQuantity: (data['initialQuantity'] as num).toDouble(),
+        unit: data['unit'] as String,
+        estimatedWeightKgPerUnit: (data['estimatedWeightKgPerUnit'] as num?)?.toDouble(),
+        pricePerUnit: (data['pricePerUnit'] as num).toDouble(),
+        currency: data['currency'] as String,
+        description: data['description'] as String?,
+        pickupLocation: LocationData.fromMap(data['pickupLocation'] as Map<String, dynamic>),
+        photoUrls: List<String>.from(data['photoUrls'] as List<dynamic>? ?? []),
+        status: ProduceListingStatus.values.firstWhere(
+          (e) => e.name == data['status'],
+          orElse: () {
+            if (kDebugMode) {
+              debugPrint('Error parsing status for $id: Value was ${data['status']}');
+            }
+            return ProduceListingStatus.available;
+          },
+        ),
+        harvestTimestamp: (data['harvestTimestamp'] as Timestamp?)?.toDate(),
+        expiryTimestamp: (data['expiryTimestamp'] as Timestamp?)?.toDate(),
+        createdAt: (data['createdAt'] as Timestamp).toDate(),
+        lastUpdated: (data['lastUpdated'] as Timestamp).toDate(),
+        quantityCommitted: (data['quantityCommitted'] as num? ?? 0).toDouble(),
+        quantitySoldAndDelivered: (data['quantitySoldAndDelivered'] as num? ?? 0).toDouble(),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error parsing ProduceListing $id: $e. Data: $data');
+      }
+      // Rethrow or return a specific error object, or handle as per your app's error strategy
+      // For now, rethrowing so it's visible in StreamBuilder's error state if not caught elsewhere.
+      rethrow;
+    }
   }
 
   Map<String, dynamic> toFirestore() {
@@ -122,25 +150,74 @@ class ProduceListing {
       'farmerId': farmerId,
       if (farmerName != null) 'farmerName': farmerName,
       'produceName': produceName,
-      'produceCategory': produceCategory,
+      'produceCategory': produceCategory.name,
       if (customProduceCategory != null) 'customProduceCategory': customProduceCategory,
+      'quantity': quantity,
       'initialQuantity': initialQuantity,
-      'quantityUnit': quantityUnit,
-      if (estimatedWeightKg != null) 'estimatedWeightKg': estimatedWeightKg,
-      if (estimatedPieceCount != null) 'estimatedPieceCount': estimatedPieceCount,
-      if (pricePerUnit != null) 'pricePerUnit': pricePerUnit,
-      if (currency != null) 'currency': currency,
-      'harvestDateTime': harvestDateTime,
-      'shelfLifeDays': shelfLifeDays,
-      'expiryTimestamp': expiryTimestamp,
-      'listingDateTime': listingDateTime,
+      'unit': unit,
+      if (estimatedWeightKgPerUnit != null) 'estimatedWeightKgPerUnit': estimatedWeightKgPerUnit,
+      'pricePerUnit': pricePerUnit,
+      'currency': currency,
+      if (description != null) 'description': description,
       'pickupLocation': pickupLocation.toMap(),
-      if (photoUrls != null) 'photoUrls': photoUrls,
-      'status': produceListingStatusToString(status),
-      if (notes != null) 'notes': notes,
-      'lastUpdated': lastUpdated,
+      'photoUrls': photoUrls,
+      'status': status.name,
+      if (harvestTimestamp != null) 'harvestTimestamp': Timestamp.fromDate(harvestTimestamp!),
+      if (expiryTimestamp != null) 'expiryTimestamp': Timestamp.fromDate(expiryTimestamp!),
+      'createdAt': Timestamp.fromDate(createdAt),
+      'lastUpdated': Timestamp.fromDate(lastUpdated),
       'quantityCommitted': quantityCommitted,
       'quantitySoldAndDelivered': quantitySoldAndDelivered,
     };
+  }
+
+  ProduceListing copyWith({
+    String? id,
+    String? farmerId,
+    String? farmerName,
+    String? produceName,
+    ProduceCategory? produceCategory,
+    String? customProduceCategory,
+    double? quantity,
+    double? initialQuantity,
+    String? unit,
+    double? estimatedWeightKgPerUnit,
+    double? pricePerUnit,
+    String? currency,
+    String? description,
+    LocationData? pickupLocation,
+    List<String>? photoUrls,
+    ProduceListingStatus? status,
+    DateTime? harvestTimestamp,
+    DateTime? expiryTimestamp,
+    DateTime? createdAt,
+    DateTime? lastUpdated,
+    double? quantityCommitted,
+    double? quantitySoldAndDelivered,
+  }) {
+    return ProduceListing(
+      id: id ?? this.id,
+      farmerId: farmerId ?? this.farmerId,
+      farmerName: farmerName ?? this.farmerName,
+      produceName: produceName ?? this.produceName,
+      produceCategory: produceCategory ?? this.produceCategory,
+      customProduceCategory: customProduceCategory ?? this.customProduceCategory,
+      quantity: quantity ?? this.quantity,
+      initialQuantity: initialQuantity ?? this.initialQuantity,
+      unit: unit ?? this.unit,
+      estimatedWeightKgPerUnit: estimatedWeightKgPerUnit ?? this.estimatedWeightKgPerUnit,
+      pricePerUnit: pricePerUnit ?? this.pricePerUnit,
+      currency: currency ?? this.currency,
+      description: description ?? this.description,
+      pickupLocation: pickupLocation ?? this.pickupLocation,
+      photoUrls: photoUrls ?? this.photoUrls,
+      status: status ?? this.status,
+      harvestTimestamp: harvestTimestamp ?? this.harvestTimestamp,
+      expiryTimestamp: expiryTimestamp ?? this.expiryTimestamp,
+      createdAt: createdAt ?? this.createdAt,
+      lastUpdated: lastUpdated ?? this.lastUpdated,
+      quantityCommitted: quantityCommitted ?? this.quantityCommitted,
+      quantitySoldAndDelivered: quantitySoldAndDelivered ?? this.quantitySoldAndDelivered,
+    );
   }
 } 

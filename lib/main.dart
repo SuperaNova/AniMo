@@ -2,14 +2,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:animo/services/firebase_auth_service.dart';
-import 'package:animo/services/produce_listing_service.dart';
 import 'package:animo/core/models/app_user.dart';
 import 'package:animo/core/widgets/auth_wrapper.dart';
 import 'firebase_options.dart'; // Ensure this is uncommented and present
-
-// Placeholder for actual LoginScreen - will be created in features/auth/screens/
-// For AuthWrapper to compile, we need a LoginScreen class, even if it's basic.
 import 'package:animo/features/auth/screens/login_screen.dart';
+import 'package:animo/services/firestore_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,7 +16,7 @@ Future<void> main() async {
   // If using FlutterFire CLI, you might have a firebase_options.dart file.
   // Otherwise, ensure google-services.json (Android) and GoogleService-Info.plist (iOS) are set up.
   await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform, // Uncomment if using firebase_options.dart
+    options: DefaultFirebaseOptions.currentPlatform, // Ensure this line is correct
   );
   
   runApp(const MyApp());
@@ -32,29 +29,60 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        Provider<FirebaseAuthService>(create: (_) => FirebaseAuthService()),
+        Provider<FirebaseAuthService>(
+          create: (_) => FirebaseAuthService(),
+        ),
         StreamProvider<AppUser?>.value(
           value: FirebaseAuthService().authStateChanges,
-          initialData: null, // Important to provide initial data
+          initialData: null,
         ),
-        Provider<ProduceListingService>(create: (_) => ProduceListingService()),
-        // You can add other services here later, e.g., FirestoreService
+        Provider<FirestoreService>(
+          create: (_) => FirestoreService(),
+        ),
       ],
       child: MaterialApp(
-        title: 'AniMo Prototype',
+        title: 'AniMo',
         theme: ThemeData(
           primarySwatch: Colors.green,
           visualDensity: VisualDensity.adaptivePlatformDensity,
           // Consider adding a more complete theme later
         ),
-        home: const AuthWrapper(), // AuthWrapper now decides the first screen
-        // TODO: Setup named routes using a router class (e.g., GoRouter or custom)
-        // For example:
-        // routes: {
-        //   LoginScreen.routeName: (context) => const LoginScreen(),
-        //   FarmerDashboardScreen.routeName: (context) => const FarmerDashboardScreen(),
-        //   // etc.
-        // },
+        home: const AuthWrapper(),
+        routes: {
+          '/login': (context) => const LoginScreen(),
+          // Define other routes as needed
+        },
+      ),
+    );
+  }
+}
+
+// Screen to show when user role is unknown or not yet determined
+class UnknownRoleScreen extends StatelessWidget {
+  const UnknownRoleScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Account Issue')),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+                'Your user role is unknown. Please contact support.'),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () async {
+                await context.read<FirebaseAuthService>().signOut();
+                // Optionally navigate to login screen if not handled by AuthWrapper
+                Navigator.of(context)
+                    .pushNamedAndRemoveUntil('/login', (route) => false);
+              },
+              child: const Text('Logout and Contact Support'),
+            ),
+          ],
+        ),
       ),
     );
   }
