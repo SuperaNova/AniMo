@@ -409,17 +409,21 @@ class _AddEditProduceListingScreenState
                           setState(() {
                             _selectedPickupLatLng = result['latlng'] as LatLng?;
                             _selectedPickupAddressString = result['address'] as String?;
-                            // Optional: Try to parse and fill barangay/municipality from address string
-                            // This is complex and error-prone. For now, user manually confirms/edits fields.
-                            // Example of a simple attempt (might not be robust):
-                            // if (_selectedPickupAddressString != null) {
-                            //   var parts = _selectedPickupAddressString!.split(',');
-                            //   // This logic highly depends on the format of _selectedAddressString
-                            //   // and might need significant refinement.
-                            //   if (parts.length > 2) { 
-                            //      _barangayController.text = parts[parts.length - 3].trim(); // Example
-                            //      _municipalityController.text = parts[parts.length - 2].trim(); // Example
-                            //   }
+                            
+                            // Autofill municipality and barangay if available
+                            final String? municipality = result['municipality'] as String?;
+                            final String? barangay = result['barangay'] as String?;
+
+                            if (municipality != null) {
+                              _municipalityController.text = municipality;
+                            }
+                            if (barangay != null) {
+                              _barangayController.text = barangay;
+                            }
+
+                            // Optional: Clear addressHint if municipality/barangay are filled
+                            // if (municipality != null || barangay != null) {
+                            //   _addressHintController.clear(); 
                             // }
                           });
                         }
@@ -444,8 +448,8 @@ class _AddEditProduceListingScreenState
                     const SizedBox(height: 8),
                     TextFormField(
                         controller: _municipalityController,
-                        decoration: const InputDecoration(labelText: 'Municipality', border: OutlineInputBorder()),
-                        validator: (v) => v == null || v.isEmpty ? 'Municipality is required' : null,
+                        decoration: const InputDecoration(labelText: 'Municipality/City', border: OutlineInputBorder()),
+                        validator: (v) => v == null || v.isEmpty ? 'Municipality/City is required' : null,
                     ),
                     const SizedBox(height: 12),
                     TextFormField(

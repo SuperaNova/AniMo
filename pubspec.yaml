@@ -49,6 +49,9 @@ dependencies:
   google_maps_flutter: ^2.6.0 
   geocoding: ^3.0.0
   geolocator: ^12.0.0
+  http: ^1.2.0  # Adding HTTP package for API requests
+  uuid: ^4.3.3  # Explicitly adding UUID package
+  connectivity_plus: ^5.0.2  # For checking network connectivity
 
   shared_preferences: ^2.2.3 # Restoring with a recent common version, adjust if needed
 

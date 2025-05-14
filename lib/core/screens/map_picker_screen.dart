@@ -1,13 +1,19 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io' if (dart.library.html) 'dart:html' as platform;
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:geocoding/geocoding.dart' as geo;
 import 'package:geolocator/geolocator.dart';
+import 'package:http/http.dart' as http;
+import 'package:uuid/uuid.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+
 
 class MapPickerScreen extends StatefulWidget {
   final LatLng? initialPosition;
-  // Default to somewhere in Cebu if no initial position and current location fails
   static const LatLng defaultInitialPosition = LatLng(10.3157, 123.8854); 
+  static const String apiKey = 'AIzaSyAjewiCAaT7BJv3Y2LSQTI4H1iNlARx34I';
 
   const MapPickerScreen({super.key, this.initialPosition});
 
@@ -17,191 +23,226 @@ class MapPickerScreen extends StatefulWidget {
 
 class _MapPickerScreenState extends State<MapPickerScreen> {
   GoogleMapController? _mapController;
-  LatLng? _selectedPosition; // This will now be the center of the map
-  // Marker? _selectedMarker; // No longer needed for tap-based selection
+  LatLng? _selectedPosition;
   String _selectedAddress = 'Move the map to select a location';
-  bool _isLoadingAddress = false; // Renamed for clarity
+  String? _selectedMunicipality;
+  String? _selectedBarangay;
+  String? _selectedPlaceName;
+  bool _isLoadingAddress = false;
   bool _isGettingCurrentLocation = true;
-  CameraPosition? _currentCameraPosition; // To store camera position
+  CameraPosition? _currentCameraPosition;
+  Timer? _debounceTimer;
 
   @override
   void initState() {
     super.initState();
     if (widget.initialPosition != null) {
-      _selectedPosition = widget.initialPosition;
-      // Initialize camera position as well
-      _currentCameraPosition = CameraPosition(target: _selectedPosition!, zoom: 16.0);
-      // We'll fetch address once the map is idle and controller is available
+      _moveCameraTo(widget.initialPosition!, zoom: 16.0);
       _isGettingCurrentLocation = false;
     } else {
       _getCurrentLocation();
     }
   }
 
-  Future<void> _getCurrentLocation() async {
-    setState(() {
-      _isGettingCurrentLocation = true;
-    });
-    try {
-      bool serviceEnabled;
-      LocationPermission permission;
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    _mapController?.dispose();
+    super.dispose();
+  }
 
-      serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location services are disabled.')));
+  Future<void> _getCurrentLocation() async {
+    setState(() => _isGettingCurrentLocation = true);
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        _showMessage('Location services are disabled.');
         _setDefaultPosition();
         return;
       }
-
-      permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permissions are denied.')));
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+        if (perm == LocationPermission.denied) {
+          _showMessage('Location permissions are denied.');
           _setDefaultPosition();
           return;
         }
       }
-      
-      if (permission == LocationPermission.deniedForever) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Location permissions are permanently denied, we cannot request permissions.')));
+      if (perm == LocationPermission.deniedForever) {
+        _showMessage('Location permissions are permanently denied.');
         _setDefaultPosition();
         return;
-      } 
-
-      Position currentPosition = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
-      final newPos = LatLng(currentPosition.latitude, currentPosition.longitude);
-      
-      setState(() {
-        _selectedPosition = newPos;
-        _currentCameraPosition = CameraPosition(target: newPos, zoom: 16.0);
-        _mapController?.animateCamera(CameraUpdate.newCameraPosition(_currentCameraPosition!));
-        // Address will be fetched on camera idle
-      });
-
+      }
+      Position pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      _moveCameraTo(LatLng(pos.latitude, pos.longitude), zoom: 16.0);
     } catch (e) {
-      print('Error getting current location: $e');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error getting current location: $e. Defaulting location.')));
+      _showMessage('Error getting location: $e');
       _setDefaultPosition();
     } finally {
-      if (mounted) {
-        setState(() {
-          _isGettingCurrentLocation = false;
-        });
-      }
+      if (mounted) setState(() => _isGettingCurrentLocation = false);
     }
   }
 
   void _setDefaultPosition() {
-    final defaultPos = MapPickerScreen.defaultInitialPosition;
-    if (mounted) {
-      setState(() {
-        _selectedPosition = defaultPos;
-        _currentCameraPosition = CameraPosition(target: defaultPos, zoom: 14.0);
-        _mapController?.animateCamera(CameraUpdate.newCameraPosition(_currentCameraPosition!));
-        // Address will be fetched on camera idle
-      });
+    _moveCameraTo(MapPickerScreen.defaultInitialPosition, zoom: 14.0);
+  }
+
+  void _moveCameraTo(LatLng target, {double zoom = 14.0}) {
+    setState(() {
+      _selectedPosition = target;
+      _currentCameraPosition = CameraPosition(target: target, zoom: zoom);
+    });
+    if (_mapController != null) {
+      _mapController!.animateCamera(CameraUpdate.newCameraPosition(_currentCameraPosition!));
     }
   }
 
+  void _showMessage(String msg) {
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
 
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
-    // If initial position was set, move camera.
-    // If current location was fetched, _currentCameraPosition will be set.
-    // If initialPosition is null and _getCurrentLocation failed, _setDefaultPosition would have set _currentCameraPosition.
     if (_currentCameraPosition != null) {
-      _mapController?.moveCamera(CameraUpdate.newCameraPosition(_currentCameraPosition!));
-    }
-    // Fetch address for the initial center after map is created and moved.
-    if (_selectedPosition != null) {
-      _updateAddressAtMapCenter(_selectedPosition!);
+      controller.moveCamera(CameraUpdate.newCameraPosition(_currentCameraPosition!));
+      _updateAddressHttp(_currentCameraPosition!.target);
     }
   }
 
-  // Future<void> _onMapTap(LatLng position) async { // No longer needed
-  // _updateMarkerAndAddress(position);
-  // }
-
-  Future<void> _updateAddressAtMapCenter(LatLng position) async {
-    if (!mounted) return;
-    setState(() {
-      _isLoadingAddress = true;
-      _selectedPosition = position; // Ensure _selectedPosition is up-to-date
-    });
-
-    try {
-      List<geo.Placemark> placemarks = await geo.placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-
-      if (placemarks.isNotEmpty) {
-        final p = placemarks.first;
-        _selectedAddress = 
-            "${p.name}, ${p.street}, ${p.subLocality}, ${p.locality}, ${p.subAdministrativeArea}, ${p.administrativeArea} ${p.postalCode}"
-            .replaceAll(RegExp(r', , '), ', ') 
-            .replaceAll(RegExp(r'^, |,|$'), '');
-        if (_selectedAddress.trim() == ',' || _selectedAddress.trim().isEmpty) {
-            _selectedAddress = 'Address details not available for this area.';
-        }
-      } else {
-        _selectedAddress = 'No address details found for this location.';
-      }
-    } catch (e) {
-      print('Error during reverse geocoding: $e');
-      _selectedAddress = 'Could not fetch address details.';
-    } finally {
-      if(mounted){
-        setState(() {
-          _isLoadingAddress = false;
-        });
-      }
-    }
-  }
-  
   void _onCameraMove(CameraPosition position) {
-    // Continuously update the selected position as the map moves.
-    // This is for immediate feedback if needed, but geocoding only happens on idle.
     if (!mounted) return;
-    setState(() {
-      _currentCameraPosition = position;
-      _selectedPosition = position.target;
-      // Optionally, you can put a temporary "Loading address..." or similar here
-      // if you want to give feedback during drag, but it might be too noisy.
-      // For now, we only update address text on camera idle.
-      // _selectedAddress = "Moving..."; // Example of immediate feedback
-    });
+    setState(() => _selectedPosition = position.target);
   }
 
   void _onCameraIdle() {
-    // Called when the map stops moving.
-    if (_mapController == null || !mounted) return;
-    
-    // It seems _currentCameraPosition might not be immediately updated by onCameraMove in some scenarios
-    // before onCameraIdle is called. To be safe, get the current map center again.
-    // However, _selectedPosition should be correctly set by _onCameraMove's setState.
-    // If _selectedPosition is null, it means something went wrong or map just initialized without interaction.
-    if (_selectedPosition != null) {
-       _updateAddressAtMapCenter(_selectedPosition!);
-    } else if (_currentCameraPosition != null) {
-      // Fallback if _selectedPosition somehow wasn't set
-      _updateAddressAtMapCenter(_currentCameraPosition!.target);
+    if (!mounted || _selectedPosition == null) return;
+
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(seconds: 1), () {
+      if (mounted && _selectedPosition != null) {
+        print("Debounced geocoding for: $_selectedPosition");
+        _updateAddressHttp(_selectedPosition!);
+      }
+    });
+  }
+
+  Future<void> _updateAddressHttp(LatLng coord) async {
+    setState(() {
+       _isLoadingAddress = true;
+       _selectedPlaceName = null;
+    });
+    _selectedMunicipality = null;
+    _selectedBarangay = null;
+
+    // Check for connectivity first
+    final connectivityResult = await Connectivity().checkConnectivity();
+    if (connectivityResult == ConnectivityResult.none) {
+      if (mounted) {
+        final msg = "No internet connection. Please check your network settings.";
+        print(msg);
+        _showMessage(msg);
+        setState(() => _isLoadingAddress = false);
+      }
+      return;
     }
-    print("Camera Idle at: ${_selectedPosition}");
+
+    final url = Uri.https(
+      'maps.googleapis.com',
+      '/maps/api/geocode/json',
+      {
+        'latlng': '${coord.latitude},${coord.longitude}',
+        'key': MapPickerScreen.apiKey,
+      },
+    );
+
+    print("Calling Geocoding API");
+
+    try {
+      // Use standard HTTP for geocoding (it was working before)
+      final client = http.Client();
+      final res = await client.get(url).timeout(const Duration(seconds: 10));
+      client.close();
+      
+      if (!mounted) return;
+      
+      print("Geocoding API response status: ${res.statusCode}");
+      
+      if (res.statusCode == 200) {
+        final j = jsonDecode(res.body);
+        if (j['status'] == 'OK' && (j['results'] as List).isNotEmpty) {
+          final result = j['results'][0];
+          final String formattedAddress = result['formatted_address'];
+          final String? potentialPlaceNameFromResult = result['name'] as String?;
+          final List<dynamic> addressComponents = result['address_components'];
+
+          String? municipality;
+          String? barangay;
+          String? extractedPlaceName;
+
+          for (var component in addressComponents) {
+            List types = component['types'];
+            if (types.contains('locality')) {
+              municipality = component['long_name'];
+            }
+            if (municipality == null && types.contains('administrative_area_level_2') && types.contains('political')) {
+               municipality = component['long_name'];
+            }
+            if (types.contains('sublocality') || types.contains('sublocality_level_1')) {
+              barangay = component['long_name'];
+            }
+            if (barangay == null && types.contains('neighborhood')) {
+                barangay = component['long_name'];
+            }
+            if (types.contains('point_of_interest') || types.contains('establishment') || types.contains('premise')) {
+              if (extractedPlaceName == null || (component['long_name'] as String).length < extractedPlaceName.length) {
+                 extractedPlaceName = component['long_name'];
+              }
+            }
+          }
+          
+          setState(() {
+            _selectedAddress = formattedAddress;
+            _selectedMunicipality = municipality;
+            _selectedBarangay = barangay;
+            if (extractedPlaceName != null && extractedPlaceName.isNotEmpty) {
+              _selectedPlaceName = extractedPlaceName;
+            } else if (potentialPlaceNameFromResult != null && potentialPlaceNameFromResult.isNotEmpty && !formattedAddress.startsWith(potentialPlaceNameFromResult)) {
+              _selectedPlaceName = potentialPlaceNameFromResult;
+            } else {
+              _selectedPlaceName = null;
+            }
+          });
+
+        } else {
+          final errorMsg = "No address found. Status: ${j['status']}";
+          print(errorMsg);
+          setState(() => _selectedAddress = errorMsg);
+        }
+      } else {
+        final errorMsg = "Error fetching address: ${res.statusCode}";
+        print(errorMsg);
+        setState(() => _selectedAddress = errorMsg);
+      }
+    } catch (e) {
+      final errorMsg = "Failed to fetch address: $e";
+      print(errorMsg);
+      setState(() => _selectedAddress = errorMsg);
+    } finally {
+      if (mounted) setState(() => _isLoadingAddress = false);
+    }
   }
 
   void _confirmSelection() {
     if (_selectedPosition != null) {
-      Map<String, dynamic> result = {
+      Navigator.of(context).pop({
         'latlng': _selectedPosition!,
         'address': _selectedAddress,
-      };
-      Navigator.of(context).pop(result);
+        'municipality': _selectedMunicipality,
+        'barangay': _selectedBarangay,
+        'placeName': _selectedPlaceName,
+      });
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a location by moving the map.')),
-      );
+      _showMessage('Please select a location.');
     }
   }
 
@@ -211,75 +252,71 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       appBar: AppBar(
         title: const Text('Select Location'),
         actions: [
-          if (_isLoadingAddress) // Updated variable name
+          if (_isLoadingAddress)
             const Padding(
-              padding: EdgeInsets.only(right: 16.0),
-              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white)))),
+              padding: EdgeInsets.only(right: 16),
+              child: SizedBox(
+                  width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.0)),
+            ),
           IconButton(
             icon: const Icon(Icons.check),
             tooltip: 'Confirm Location',
-            onPressed: _selectedPosition == null ? null : _confirmSelection,
+            onPressed: (_selectedPosition == null || _isLoadingAddress) ? null : _confirmSelection,
           )
         ],
       ),
-      body: Stack(
+      body: Column(
         children: [
-          GoogleMap(
-            onMapCreated: _onMapCreated,
-            initialCameraPosition: _currentCameraPosition ?? CameraPosition( // Use _currentCameraPosition
-              target: widget.initialPosition ?? MapPickerScreen.defaultInitialPosition,
-              zoom: 14.0,
-            ),
-            // onTap: _onMapTap, // Removed onTap
-            // markers: _selectedMarker != null ? {_selectedMarker!} : {}, // Markers no longer managed this way for selection
-            markers: {}, // Clear markers, or add other markers if needed later
-            onCameraMove: _onCameraMove,
-            onCameraIdle: _onCameraIdle,
-            myLocationEnabled: true, 
-            myLocationButtonEnabled: true,
-            padding: EdgeInsets.only(bottom: _isLoadingAddress || _selectedAddress.isNotEmpty ? 80 : 10),
-          ),
-          // Center Marker Icon
-          Align(
-            alignment: Alignment.center,
-            child: Padding(
-              // Adjust padding if the icon's "tip" is not exactly at its center
-              padding: const EdgeInsets.only(bottom: 0), // Example: if pin tip is at bottom center of icon
-              child: Icon(
-                Icons.location_pin,
-                size: 50, // Adjust size as needed
-                color: Theme.of(context).colorScheme.primary, // Use theme color
-              ),
-            ),
-          ),
-          if (_isGettingCurrentLocation)
-            const Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 8),
-                  Text("Getting current location...")
-                ],
-              ),
-            ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.all(12.0),
-              color: Colors.black.withOpacity(0.7),
-              child: Text(
-                _isLoadingAddress ? 'Fetching address...' : _selectedAddress, // Updated variable name
-                style: const TextStyle(color: Colors.white, fontSize: 14.0),
-                textAlign: TextAlign.center,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
+          Expanded(
+            child: Stack(
+              children: [
+                GoogleMap(
+                  onMapCreated: _onMapCreated,
+                  initialCameraPosition: _currentCameraPosition ?? CameraPosition(
+                      target: widget.initialPosition ?? MapPickerScreen.defaultInitialPosition,
+                      zoom: 14.0),
+                  onCameraMove: _onCameraMove,
+                  onCameraIdle: _onCameraIdle,
+                  myLocationEnabled: true,
+                  myLocationButtonEnabled: true,
+                  markers: {},
+                  padding: EdgeInsets.only(bottom: _isLoadingAddress ? 80 : 10),
+                ),
+                const Align(
+                  alignment: Alignment.center,
+                  child: Icon(Icons.location_pin, size: 50),
+                ),
+                if (_isGettingCurrentLocation)
+                  const Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [CircularProgressIndicator(), SizedBox(height: 8), Text('Getting current location...')],
+                    ),
+                  ),
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    color: Colors.black.withOpacity(0.7),
+                    child: Text(
+                      _isLoadingAddress ? 'Fetching address...' : _selectedAddress,
+                      style: const TextStyle(color: Colors.white),
+                      textAlign: TextAlign.center,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _getCurrentLocation,
+        child: const Icon(Icons.my_location),
       ),
     );
   }
