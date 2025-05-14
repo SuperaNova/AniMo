@@ -1,30 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-enum UserRole { farmer, buyer, driver, unknown }
-
-String userRoleToString(UserRole role) {
-  switch (role) {
-    case UserRole.farmer:
-      return 'farmer';
-    case UserRole.buyer:
-      return 'buyer';
-    case UserRole.driver:
-      return 'driver';
-    default:
-      return 'unknown';
-  }
-}
-
-UserRole userRoleFromString(String? roleString) {
-  if (roleString == 'farmer') {
-    return UserRole.farmer;
-  } else if (roleString == 'buyer') {
-    return UserRole.buyer;
-  } else if (roleString == 'driver') {
-    return UserRole.driver;
-  }
-  return UserRole.unknown;
-}
+enum UserRole { farmer, buyer, driver, admin, unknown }
 
 class AppUser {
   final String uid;
@@ -33,7 +9,8 @@ class AppUser {
   final String? phoneNumber;
   final String? photoURL;
   final UserRole role;
-  final Timestamp registrationDate;
+  final DateTime? registrationDate;
+  final String? fcmToken;
   // Add other common fields if needed, e.g., deviceToken for FCM
 
   AppUser({
@@ -43,31 +20,58 @@ class AppUser {
     this.phoneNumber,
     this.photoURL,
     required this.role,
-    required this.registrationDate,
+    this.registrationDate,
+    this.fcmToken,
   });
 
-  factory AppUser.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
-    final data = doc.data()!;
+  factory AppUser.fromFirestore(Map<String, dynamic> data, String id) {
     return AppUser(
-      uid: doc.id,
+      uid: id,
       email: data['email'] as String?,
       displayName: data['displayName'] as String?,
       phoneNumber: data['phoneNumber'] as String?,
       photoURL: data['photoURL'] as String?,
-      role: userRoleFromString(data['role'] as String?),
-      registrationDate: data['registrationDate'] as Timestamp? ?? Timestamp.now(),
+      role: UserRole.values.firstWhere(
+        (e) => e.name == data['role'],
+        orElse: () => UserRole.unknown,
+      ),
+      registrationDate: (data['registrationDate'] as Timestamp?)?.toDate(),
+      fcmToken: data['fcmToken'] as String?,
     );
   }
 
   Map<String, dynamic> toFirestore() {
     return {
-      // uid is the document ID, so not stored in fields typically
       if (email != null) 'email': email,
       if (displayName != null) 'displayName': displayName,
       if (phoneNumber != null) 'phoneNumber': phoneNumber,
       if (photoURL != null) 'photoURL': photoURL,
-      'role': userRoleToString(role),
-      'registrationDate': registrationDate,
+      'role': role.name,
+      if (registrationDate != null) 'registrationDate': Timestamp.fromDate(registrationDate!),
+      if (fcmToken != null) 'fcmToken': fcmToken,
+      // uid is not stored in the document fields itself, it's the document ID
     };
+  }
+
+  AppUser copyWith({
+    String? uid,
+    String? email,
+    String? displayName,
+    String? phoneNumber,
+    String? photoURL,
+    UserRole? role,
+    DateTime? registrationDate,
+    String? fcmToken,
+  }) {
+    return AppUser(
+      uid: uid ?? this.uid,
+      email: email ?? this.email,
+      displayName: displayName ?? this.displayName,
+      phoneNumber: phoneNumber ?? this.phoneNumber,
+      photoURL: photoURL ?? this.photoURL,
+      role: role ?? this.role,
+      registrationDate: registrationDate ?? this.registrationDate,
+      fcmToken: fcmToken ?? this.fcmToken,
+    );
   }
 } 

@@ -38,8 +38,8 @@ class FirebaseAuthService {
         userDoc = await _firestore.collection('users').doc(firebaseUser.uid).get(); // Retry fetch
       }
 
-      if (userDoc.exists) {
-        return AppUser.fromFirestore(userDoc);
+      if (userDoc.exists && userDoc.data() != null) {
+        return AppUser.fromFirestore(userDoc.data()!, userDoc.id);
       } else {
         // This case might happen if user data wasn't created in Firestore,
         // or if it's a new sign-up that hasn't completed profile creation.
@@ -54,7 +54,7 @@ class FirebaseAuthService {
           displayName: firebaseUser.displayName,
           photoURL: firebaseUser.photoURL,
           role: UserRole.unknown, // Role should be set during registration and stored in Firestore
-          registrationDate: Timestamp.fromDate(firebaseUser.metadata.creationTime ?? DateTime.now()),
+          registrationDate: firebaseUser.metadata.creationTime,
         );
       }
     });
@@ -69,8 +69,8 @@ class FirebaseAuthService {
     if (fbUser == null) return null;
     try {
       final userDoc = await _firestore.collection('users').doc(fbUser.uid).get();
-      if (userDoc.exists) {
-        return AppUser.fromFirestore(userDoc);
+      if (userDoc.exists && userDoc.data() != null) {
+        return AppUser.fromFirestore(userDoc.data()!, userDoc.id);
       }
     } catch (e) {
       print("Error fetching AppUser: $e");
@@ -108,7 +108,7 @@ class FirebaseAuthService {
           phoneNumber: phoneNumber,
           photoURL: firebaseUser.photoURL, // Initially null or from provider data
           role: role,
-          registrationDate: Timestamp.now(),
+          registrationDate: DateTime.now(),
         );
 
         // Store user data in Firestore in the 'users' collection
@@ -146,8 +146,8 @@ class FirebaseAuthService {
       if (firebaseUser != null) {
         // Fetch full AppUser data from Firestore
         final userDoc = await _firestore.collection('users').doc(firebaseUser.uid).get();
-        if (userDoc.exists) {
-          return AppUser.fromFirestore(userDoc);
+        if (userDoc.exists && userDoc.data() != null) {
+          return AppUser.fromFirestore(userDoc.data()!, userDoc.id);
         } else {
            print("Error: User signed in but Firestore document missing for UID: ${firebaseUser.uid}");
            throw Exception("User data not found. Please contact support.");
