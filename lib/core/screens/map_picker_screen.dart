@@ -32,6 +32,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   bool _isGettingCurrentLocation = true;
   CameraPosition? _currentCameraPosition;
   Timer? _debounceTimer;
+  String? _selectedStreet;
 
   @override
   void initState() {
@@ -178,6 +179,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
           String? municipality;
           String? barangay;
           String? extractedPlaceName;
+          String? street;
 
           for (var component in addressComponents) {
             List types = component['types'];
@@ -192,6 +194,9 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
             }
             if (barangay == null && types.contains('neighborhood')) {
                 barangay = component['long_name'];
+            }
+            if (types.contains('route')) {
+              street = component['long_name'];
             }
             if (types.contains('point_of_interest') || types.contains('establishment') || types.contains('premise')) {
               if (extractedPlaceName == null || (component['long_name'] as String).length < extractedPlaceName.length) {
@@ -212,6 +217,13 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
               _selectedPlaceName = null;
             }
           });
+
+          // Save street for later use
+          if (street != null && street.isNotEmpty) {
+            setState(() {
+              _selectedStreet = street;
+            });
+          }
 
         } else {
           final errorMsg = "No address found. Status: ${j['status']}";
@@ -240,6 +252,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
         'municipality': _selectedMunicipality,
         'barangay': _selectedBarangay,
         'placeName': _selectedPlaceName,
+        'street': _selectedStreet,
       });
     } else {
       _showMessage('Please select a location.');

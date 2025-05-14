@@ -413,6 +413,9 @@ class _AddEditProduceListingScreenState
                             // Autofill municipality and barangay if available
                             final String? municipality = result['municipality'] as String?;
                             final String? barangay = result['barangay'] as String?;
+                            final String? street = result['street'] as String?;
+                            final String? placeName = result['placeName'] as String?;
+                            final String? fullAddress = result['address'] as String?;
 
                             if (municipality != null) {
                               _municipalityController.text = municipality;
@@ -420,11 +423,37 @@ class _AddEditProduceListingScreenState
                             if (barangay != null) {
                               _barangayController.text = barangay;
                             }
-
-                            // Optional: Clear addressHint if municipality/barangay are filled
-                            // if (municipality != null || barangay != null) {
-                            //   _addressHintController.clear(); 
-                            // }
+                            
+                            // Extract detailed address information for Address Hint
+                            // Try to get everything before the barangay/municipality in the full address
+                            if (fullAddress != null && fullAddress.isNotEmpty) {
+                              String detailedAddress = fullAddress;
+                              
+                              // Remove municipality and following parts if present
+                              if (municipality != null && detailedAddress.contains(municipality)) {
+                                detailedAddress = detailedAddress.substring(0, detailedAddress.indexOf(municipality)).trim();
+                              }
+                              
+                              // Remove barangay and following parts if present
+                              if (barangay != null && detailedAddress.contains(barangay)) {
+                                detailedAddress = detailedAddress.substring(0, detailedAddress.indexOf(barangay)).trim();
+                              }
+                              
+                              // Clean up trailing commas, etc.
+                              detailedAddress = detailedAddress.replaceAll(RegExp(r',\s*$'), '').trim();
+                              
+                              if (detailedAddress.isNotEmpty) {
+                                _addressHintController.text = detailedAddress;
+                              } else if (street != null && street.isNotEmpty) {
+                                _addressHintController.text = street;
+                              } else if (placeName != null && placeName.isNotEmpty) {
+                                _addressHintController.text = placeName;
+                              }
+                            } else if (street != null && street.isNotEmpty) {
+                              _addressHintController.text = street;
+                            } else if (placeName != null && placeName.isNotEmpty) {
+                              _addressHintController.text = placeName;
+                            }
                           });
                         }
                       },
