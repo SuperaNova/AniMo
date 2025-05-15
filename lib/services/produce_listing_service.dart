@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/cupertino.dart';
 import '../core/models/produce_listing.dart';
 // Potentially import AppUser if needed to get farmerId easily or for farmer-specific logic
 
@@ -43,6 +44,67 @@ class ProduceListingService {
       return <ProduceListing>[];
     });
   }
+
+  Stream<List<ProduceListing>> getActiveListings(String farmerId) {
+    if (farmerId.isEmpty) {
+      // Return an empty stream or throw an error if farmerId is not available
+      debugPrint("Farmer ID is empty. Returning empty stream for active listings.");
+      return Stream.value([]);
+    }
+
+    try {
+      return _firestore
+          .collection('produceListings')
+          .where('farmerId', isEqualTo: farmerId)
+          .where('status', isEqualTo: ProduceListingStatus.available)
+          .orderBy('createdAt', descending: true)
+          .snapshots()
+          .map((snapshot) {
+        // Map each document snapshot to a ProduceListing object
+        return snapshot.docs
+            .map((doc) => ProduceListing.fromFirestore(doc.data as Map<String, dynamic>, doc.id))
+            .toList();
+      }).handleError((error) {
+        // Handle any errors during the stream processing
+        debugPrint("Error fetching active listings: $error");
+        return <ProduceListing>[]; // Return empty list on error
+      });
+    } catch (e) {
+      debugPrint("Exception in getActiveListings: $e");
+      return Stream.value([]); // Return an empty stream on exception
+    }
+  }
+
+  Stream<List<ProduceListing>> getFarmerProduceListingsLimited(String farmerId, int limit) {
+    if (limit <= 0) {
+      debugPrint("FirestoreService: Limit must be greater than 0. Returning empty stream.");
+      return Stream.value([]);
+    }
+
+    try {
+      return _firestore
+          .collection('produceListings')
+          .where('farmerId', isEqualTo: farmerId)
+          .orderBy('createdAt', descending: true)
+          .limit(limit) // Apply the limit directly to the Firestore query
+          .snapshots()
+          .map((snapshot) {
+        debugPrint("FirestoreService (Limited): Received ${snapshot.docs.length} listings for $farmerId (limit: $limit)");
+        return snapshot.docs.map((doc) {
+          return ProduceListing.fromFirestore(doc.data(), doc.id);
+        }).toList();
+      }).handleError((error, stackTrace) {
+        debugPrint("Error in getFarmerProduceListingsLimited stream: $error");
+        debugPrint("Stack trace: $stackTrace");
+        return <ProduceListing>[]; // Return empty list on error
+      });
+    } catch (e, stackTrace) {
+      debugPrint("Exception caught in getFarmerProduceListingsLimited: $e");
+      debugPrint("Stack trace: $stackTrace");
+      return Stream.value([]);
+    }
+  }
+
 
   // Read - Get a single listing by ID (might be useful)
   Future<ProduceListing?> getProduceListingById(String listingId) async {
