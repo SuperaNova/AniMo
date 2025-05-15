@@ -234,36 +234,6 @@ class FirestoreService {
     );
   }
 
-  Stream<List<ProduceListing>> getActiveListings(String farmerId) {
-    if (farmerId.isEmpty) {
-      // Return an empty stream or throw an error if farmerId is not available
-      debugPrint("Farmer ID is empty. Returning empty stream for active listings.");
-      return Stream.value([]);
-    }
-
-    try {
-      return _db
-          .collection('produceListings')
-          .where('farmerId', isEqualTo: farmerId)
-          .where('status', isEqualTo: ProduceListingStatus.available)
-          .orderBy('createdAt', descending: true)
-          .snapshots()
-          .map((snapshot) {
-        // Map each document snapshot to a ProduceListing object
-        return snapshot.docs
-            .map((doc) => ProduceListing.fromFirestore(doc.data as Map<String, dynamic>, doc.id))
-            .toList();
-      }).handleError((error) {
-        // Handle any errors during the stream processing
-        debugPrint("Error fetching active listings: $error");
-        return <ProduceListing>[]; // Return empty list on error
-      });
-    } catch (e) {
-      debugPrint("Exception in getActiveListings: $e");
-      return Stream.value([]); // Return an empty stream on exception
-    }
-  }
-
   // Helper to get AppUser data
   Future<AppUser?> getAppUser(String userId) async {
     final docSnap = await _db.collection('users').doc(userId).get();
