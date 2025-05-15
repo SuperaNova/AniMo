@@ -208,7 +208,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
           ),
           const SizedBox(height: 8),
           Text(
-            NumberFormat.currency(symbol: '\$ ', decimalDigits: 2).format(stats.totalListingsValue),
+            NumberFormat.currency(locale: 'en_PH', symbol: '₱', decimalDigits: 2).format(stats.totalListingsValue),
             style: TextStyle(
                 color: colorScheme.surface, fontSize: 36, fontWeight: FontWeight.bold),
           ),
