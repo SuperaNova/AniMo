@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:animo/services/firebase_auth_service.dart';
 import 'package:animo/services/produce_listing_service.dart'; // Added import
@@ -11,8 +12,12 @@ import 'package:animo/features/auth/screens/landing_screen.dart'; // Import the 
 import 'package:animo/features/auth/screens/registration_screen.dart'; // Ensure RegistrationScreen is available for routes if needed
 import 'package:animo/services/firestore_service.dart'; // Assuming you have this service
 import 'package:animo/theme/theme.dart'; // Your custom theme
+import 'package:intl/date_symbol_data_local.dart';
 
 Future<void> main() async {
+  Intl.defaultLocale = 'en_PH';
+  await initializeDateFormatting();
+
   // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
 
