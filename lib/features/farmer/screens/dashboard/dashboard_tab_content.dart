@@ -1,4 +1,5 @@
 import 'package:animo/core/models/order.dart';
+import 'package:animo/features/farmer/screens/active_orders_screen.dart';
 import 'package:animo/services/firebase_auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -12,7 +13,6 @@ import '../../../../core/models/produce_listing.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../../services/produce_listing_service.dart';
 import '../common_widgets.dart';
-import '../match_requests_screen.dart';
 
 // This widget now holds the content previously in _StatisticsScreenState._buildDashboardContent
 class DashboardTabContent extends StatefulWidget {
@@ -208,7 +208,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> {
       child: GestureDetector(
         onTap: () {
           Navigator.of(context).push(
-            MaterialPageRoute(builder: (context) => const MatchRequestsScreen()),
+            MaterialPageRoute(builder: (context) => const ActiveOrdersScreen()),
           );
         },
         child: Container(
@@ -266,12 +266,12 @@ Widget _buildMatchSuggestions(FarmerStats stats) { // Added BuildContext for pot
     iconBackgroundColor = Colors.green.shade600;
     iconColor = Colors.white;
     iconData = Icons.check_circle_outline;
-    message = 'No pending actions';
+    message = 'No active orders';
   } else {
     iconBackgroundColor = const Color(0xFFFFD700); // Default yellow
     iconColor = const Color(0xFF4A2E2B);       // Default dark brown
     iconData = Icons.lightbulb_outline;        // Default lightbulb icon
-    message = '${stats.pendingMatchSuggestions} pending actions';
+    message = '${stats.pendingMatchSuggestions} active orders';
   }
 
   return Row(
@@ -294,7 +294,7 @@ Widget _buildMatchSuggestions(FarmerStats stats) { // Added BuildContext for pot
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'Match Suggestions',
+              'Order Status',
               style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 4),
