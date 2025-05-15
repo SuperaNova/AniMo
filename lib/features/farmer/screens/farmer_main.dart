@@ -1,4 +1,5 @@
 import 'package:animo/features/farmer/screens/profile/profile_screen.dart';
+import 'package:animo/services/produce_listing_service.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -23,6 +24,7 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
 
   late final FirebaseAuthService _authService;
   late final FirestoreService _firestoreService;
+  late final ProduceListingService _produceListingService;
   FarmerStats? _farmerStats; // This will be passed to DashboardTabContent
   bool _isLoadingStats = true;
   String? _statsErrorMessage;
@@ -32,6 +34,7 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
     super.initState();
     _authService = Provider.of<FirebaseAuthService>(context, listen: false);
     _firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    _produceListingService = Provider.of<ProduceListingService>(context, listen: false);
     _fetchFarmerStats();
   }
 
@@ -72,6 +75,7 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
         statsErrorMessage: _statsErrorMessage,
         firestoreService: _firestoreService, // Pass service for real-time history
         firebaseAuthService: _authService,
+        produceListingService: _produceListingService,
       ),
       const AllListingsTabContent(),
     ];

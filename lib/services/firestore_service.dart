@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../core/models/activity_item.dart';
 import '../core/models/app_user.dart';
 import '../core/models/farmer_stats.dart';
+import '../core/models/order.dart';
 import '../core/models/produce_listing.dart';
 import '../core/models/match_suggestion.dart';
 import '../core/models/order.dart' as app_order;
@@ -156,82 +157,230 @@ class FirestoreService {
   }
 
   Future<FarmerStats> getFarmerStats() async {
-    if (currentUserId == null) {
+    if (currentUserId == null || currentUserId!.isEmpty) {
+      debugPrint("User not logged in. Cannot fetch farmer stats.");
       throw Exception("User not logged in. Cannot fetch farmer stats.");
     }
 
     String farmerName = "Unknown Farmer";
-
-    // fetch Farmer's Name using the existing getAppUser method
     try {
-      final appUser = await getAppUser(currentUserId!);
-      if (appUser != null && appUser.displayName != null && appUser.displayName!.isNotEmpty) {
-        farmerName = appUser.displayName!;
+      final userDoc = await _db.collection('users').doc(currentUserId).get(); // Assuming a 'users' collection for farmer name
+      if (userDoc.exists && userDoc.data()?['displayName'] != null) {
+        farmerName = userDoc.data()!['displayName'];
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint("Error fetching app user for farmer stats ($currentUserId): $e");
+        debugPrint("Error fetching user's display name for FarmerStats: $e");
       }
-      // Farmer name will remain "Unknown Farmer" or could be fetched from listings later
     }
 
-    // Fetch Active ProduceListings for the farmer
-    // This is a one-time fetch, not a stream, for calculating current stats.
+
     final activeListingsQuery = _db
         .collection('produceListings')
         .where('farmerId', isEqualTo: currentUserId)
-        .where('status', isEqualTo: ProduceListingStatus.available.name); // Using .name for enum
+        .where('status', isEqualTo: ProduceListingStatus.available.name);
 
-    final activeListingsSnapshot = await activeListingsQuery.get();
-
-    List<ProduceListing> activeListings = activeListingsSnapshot.docs
-        .map((doc) => ProduceListing.fromFirestore(doc.data(), doc.id))
-        .toList();
-
-    // Fallback for farmer name if not found via AppUser and listings are available
-    if (farmerName == "Unknown Farmer" && activeListings.isNotEmpty) {
-      farmerName = activeListings.first.farmerName ?? "Unknown Farmer";
-    }
-
-    // Calculate totalActiveListings and totalListingsValue
-    int totalActiveListingsCount = activeListings.length;
+    int totalActiveListingsCount = 0;
     double totalListingsValue = 0;
-    for (var listing in activeListings) {
-      // Ensure quantity is not null, default to 0 if it is (though schema implies it's required)
-      totalListingsValue += (listing.quantity) * (listing.pricePerUnit);
+    try {
+      final activeListingsSnapshot = await activeListingsQuery.get();
+      List<ProduceListing> activeListings = activeListingsSnapshot.docs
+          .map((doc) => ProduceListing.fromFirestore(doc.data(), doc.id))
+          .toList();
+
+      totalActiveListingsCount = activeListings.length;
+      for (var listing in activeListings) {
+        totalListingsValue += listing.quantity * listing.pricePerUnit;
+      }
+      // Fallback for farmer name if not found via users collection and listings are available
+      if (farmerName == "Unknown Farmer" && activeListings.isNotEmpty) {
+        farmerName = activeListings.first.farmerName ?? "Unknown Farmer";
+      }
+    } catch (e) {
+      debugPrint("Error fetching active listings for stats: $e");
     }
 
-    // Create recentActivity from active listings (sorted by creation date, newest first)
-    activeListings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    List<ActivityItem> recentActivity = activeListings.map((listing) {
-      return ActivityItem(
-        icon: listing.produceCategory.icon,
-        iconBgColor: listing.produceCategory.color.withOpacity(0.15),
-        iconColor: listing.produceCategory.color,
-        title: listing.produceName,
-        subtitle: "${listing.quantity.toStringAsFixed(1)} ${listing.unit} - ${listing.produceCategory.displayName}",
-        trailingText: "${listing.pricePerUnit.toStringAsFixed(2)} ${listing.currency}",
-      );
-    }).toList();
-
-    // Fetch Pending MatchSuggestions for the farmer
-    // These are suggestions made *to* this farmer that they need to approve.
-    final pendingSuggestionsQuery = _db
+    // This query remains for "Match Suggestions" card
+    final pendingMatchSuggestionsQuery = _db
         .collection('matchSuggestions')
         .where('farmerId', isEqualTo: currentUserId)
-        .where('status', isEqualTo: MatchStatus.pending_farmer_approval.name); // Using .name for enum
+        .where('status', isEqualTo: MatchStatus.pending_farmer_approval.name);
 
-    final pendingSuggestionsSnapshot = await pendingSuggestionsQuery.get();
-    int pendingMatchSuggestionsCount = pendingSuggestionsSnapshot.docs.length;
+    int pendingMatchSuggestionsCount = 0;
+    try {
+      final pendingSuggestionsSnapshot = await pendingMatchSuggestionsQuery.get();
+      pendingMatchSuggestionsCount = pendingSuggestionsSnapshot.docs.length;
+    } catch(e) {
+      debugPrint("Error fetching pending match suggestions count: $e");
+    }
 
-    // Construct and return FarmerStats
+    // This query remains for the "Orders to Confirm" card (which might be hidden)
+    final pendingConfirmationOrdersQuery = _db
+        .collection('orders')
+        .where('farmerId', isEqualTo: currentUserId)
+        .where('status', isEqualTo: OrderStatus.pending_confirmation.name);
+
+    int pendingConfirmationOrdersCount = 0;
+    try {
+      final pendingOrdersSnapshot = await pendingConfirmationOrdersQuery.get();
+      pendingConfirmationOrdersCount = pendingOrdersSnapshot.docs.length;
+    } catch (e) {
+      debugPrint("Error fetching pending confirmation orders count: $e");
+    }
+
+    // --- NEW: Query for "Active In-Progress Orders" ---
+    // These are orders past 'pending_confirmation' but not yet 'completed' or any terminal state.
+    // Define statuses that are considered "active and in-progress" for the farmer.
+    final List<String> activeInProgressOrderStatuses = [
+      OrderStatus.confirmed_by_platform.name,
+      OrderStatus.searching_for_driver.name,
+      OrderStatus.driver_assigned.name,
+      OrderStatus.driver_en_route_to_pickup.name,
+      OrderStatus.at_pickup_location.name,
+      OrderStatus.picked_up.name,
+      OrderStatus.en_route_to_delivery.name,
+      OrderStatus.at_delivery_location.name,
+      OrderStatus.delivered.name, // 'delivered' is active until 'completed' (payment settled)
+    ];
+
+    int activeInProgressOrdersCount = 0;
+    if (activeInProgressOrderStatuses.isNotEmpty) { // Check to prevent empty 'whereIn' query
+      final activeOrdersQuery = _db
+          .collection('orders')
+          .where('farmerId', isEqualTo: currentUserId)
+          .where('status', whereIn: activeInProgressOrderStatuses);
+      try {
+        final activeOrdersSnapshot = await activeOrdersQuery.get();
+        activeInProgressOrdersCount = activeOrdersSnapshot.docs.length;
+      } catch (e) {
+        debugPrint("Error fetching active in-progress orders count: $e");
+      }
+    }
+
+
     return FarmerStats(
       totalActiveListings: totalActiveListingsCount,
       totalListingsValue: totalListingsValue,
       pendingMatchSuggestions: pendingMatchSuggestionsCount,
-      recentActivity: recentActivity,
       farmerName: farmerName,
+      pendingConfirmationOrdersCount: pendingConfirmationOrdersCount,
+      activeInProgressOrdersCount: activeInProgressOrdersCount, // Pass the new count
     );
+  }
+
+  Stream<int> watchPendingConfirmationOrdersCount() {
+    if (currentUserId == null || currentUserId!.isEmpty) {
+      debugPrint("FirestoreService: No currentUserId, returning stream with 0 for pending orders count.");
+      return Stream.value(0);
+    }
+    try {
+      return _db
+          .collection('orders')
+          .where('farmerId', isEqualTo: currentUserId)
+          .where('status', isEqualTo: app_order.OrderStatus.pending_confirmation.name)
+          .snapshots()
+          .map((snapshot) => snapshot.docs.length) // Map the snapshot to the count of documents
+          .handleError((error, stackTrace) {
+        debugPrint("Error in watchPendingConfirmationOrdersCount stream: $error");
+        debugPrintStack(stackTrace: stackTrace);
+        return 0; // Return 0 on error
+      });
+    } catch (e, stackTrace) {
+      debugPrint("Exception caught in watchPendingConfirmationOrdersCount: $e");
+      debugPrintStack(stackTrace: stackTrace);
+      return Stream.value(0);
+    }
+  }
+
+  Stream<int> watchActiveInProgressOrdersCount() {
+    if (currentUserId == null || currentUserId!.isEmpty) {
+      debugPrint("FirestoreService: No currentUserId, returning stream with 0 for active orders count.");
+      return Stream.value(0);
+    }
+    final List<String> activeInProgressOrderStatuses = [
+      OrderStatus.confirmed_by_platform.name,
+      OrderStatus.searching_for_driver.name,
+      OrderStatus.driver_assigned.name,
+      OrderStatus.driver_en_route_to_pickup.name,
+      OrderStatus.at_pickup_location.name,
+      OrderStatus.picked_up.name,
+      OrderStatus.en_route_to_delivery.name,
+      OrderStatus.at_delivery_location.name,
+      OrderStatus.delivered.name,
+    ];
+
+    if (activeInProgressOrderStatuses.isEmpty) return Stream.value(0);
+
+    try {
+      return _db
+          .collection('orders')
+          .where('farmerId', isEqualTo: currentUserId)
+          .where('status', whereIn: activeInProgressOrderStatuses)
+          .snapshots()
+          .map((snapshot) => snapshot.docs.length)
+          .handleError((error, stackTrace) {
+        debugPrint("Error in watchActiveInProgressOrdersCount stream: $error");
+        debugPrintStack(stackTrace: stackTrace);
+        return 0;
+      });
+    } catch (e, stackTrace) {
+      debugPrint("Exception caught in watchActiveInProgressOrdersCount: $e");
+      debugPrintStack(stackTrace: stackTrace);
+      return Stream.value(0);
+    }
+  }
+
+  Future<void> updateOrderStatus(String orderId, OrderStatus newStatus, {String? farmerNotes, String? cancellationReason}) async {
+    if (currentUserId == null || currentUserId!.isEmpty) {
+      throw Exception("User not authenticated. Cannot update order status.");
+    }
+    if (orderId.isEmpty) {
+      throw ArgumentError("Order ID cannot be empty.");
+    }
+
+    Map<String, dynamic> updateData = {
+      'status': newStatus.name,
+      'lastUpdated': FieldValue.serverTimestamp(),
+    };
+
+    // Add farmer notes if provided
+    if (farmerNotes != null && farmerNotes.isNotEmpty) {
+      updateData['farmerNotes'] = farmerNotes;
+    }
+
+    // Add cancellation reason if the new status is a cancellation by farmer
+    if (newStatus == OrderStatus.cancelled_by_farmer && cancellationReason != null && cancellationReason.isNotEmpty) {
+      // Assuming you have a field like 'cancellationReason' or 'farmerCancellationReason' in your Order model
+      // If not, you might store it in 'farmerNotes' or add a dedicated field.
+      // For this example, let's assume 'farmerNotes' can hold this.
+      updateData['farmerNotes'] = "Cancelled by farmer: $cancellationReason ${farmerNotes ?? ''}".trim();
+      // Or, if you have a specific field:
+      // updateData['cancellationReason'] = cancellationReason;
+    }
+
+    // Add a new entry to statusHistory
+    final statusUpdate = OrderStatusUpdate(
+      status: newStatus,
+      timestamp: DateTime.now(), // Firestore server timestamp will be more accurate for 'lastUpdated'
+      updatedBy: currentUserId, // Log who made the change
+      reason: newStatus == OrderStatus.cancelled_by_farmer ? cancellationReason : null,
+    );
+    updateData['statusHistory'] = FieldValue.arrayUnion([statusUpdate.toMap()]);
+
+
+    try {
+      // Optional: Verify the order belongs to the current farmer before updating
+      final orderDoc = await _db.collection('orders').doc(orderId).get();
+      if (!orderDoc.exists || orderDoc.data()?['farmerId'] != currentUserId) {
+        throw Exception("Order not found or permission denied.");
+      }
+
+      await _db.collection('orders').doc(orderId).update(updateData);
+      debugPrint("Order $orderId status updated to ${newStatus.name}");
+    } catch (e) {
+      debugPrint("Error updating order $orderId: $e");
+      rethrow; // Rethrow to be handled by the UI
+    }
   }
 
   // Helper to get AppUser data
