@@ -1,6 +1,7 @@
 import 'package:animo/services/firebase_auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // Required for SystemUiOverlayStyle
 import 'package:provider/provider.dart';
 
 // Import your new tab screens
@@ -32,9 +33,11 @@ class _MainBuyerScreenState extends State<MainBuyerScreen> {
   ];
 
   // Titles for the AppBar corresponding to each tab
+  // Note: Consider if these titles accurately reflect the content
+  // e.g., AvailableProduceTab now has suggestions.
   static const List<String> _appBarTitles = <String>[
     'Available Produce',
-    'My Requests & Suggestions',
+    'My Requests  ',
     'Notifications',
     'My Profile',
   ];
@@ -49,37 +52,57 @@ class _MainBuyerScreenState extends State<MainBuyerScreen> {
   Widget build(BuildContext context) {
     final authService = Provider.of<FirebaseAuthService>(context, listen: false);
     final firebaseUser = FirebaseAuth.instance.currentUser;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    const Color darkBrownHeaderColor = Color(0xFF4A2E2B);
+
+    // AppBar colors now depend on whether index 0 OR 1 is selected
+    bool isDarkHeaderTabActive = _selectedIndex == 0 || _selectedIndex == 1;
+    Color appBarBackgroundColor = isDarkHeaderTabActive ? darkBrownHeaderColor : colorScheme.surface;
+    Color appBarForegroundColor = isDarkHeaderTabActive ? Colors.white : colorScheme.onSurface;
+    Brightness statusBarIconBrightness = isDarkHeaderTabActive ? Brightness.light : Brightness.dark;
+    Brightness statusBarBrightness = isDarkHeaderTabActive ? Brightness.dark : Brightness.light; // For iOS status bar text/icons
 
     return Scaffold(
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        title: Text(_appBarTitles[_selectedIndex]),
+        title: Text(_appBarTitles[_selectedIndex],style: TextStyle(fontWeight: FontWeight.bold, color: appBarForegroundColor)),
+        backgroundColor: appBarBackgroundColor,
+        elevation: 0,
+        iconTheme: IconThemeData(color: appBarForegroundColor),
+        actionsIconTheme: IconThemeData(color: appBarForegroundColor),
+        systemOverlayStyle: SystemUiOverlayStyle(
+            statusBarColor: appBarBackgroundColor, // Match status bar background to AppBar
+            statusBarIconBrightness: statusBarIconBrightness, // For Android status bar icons
+            statusBarBrightness: statusBarBrightness, // For iOS status bar icons
+        ),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 8.0), // Adds 8.0 logical pixels of margin to the right
+            padding: const EdgeInsets.only(right: 8.0),
             child: IconButton(
-              icon: const Icon(Icons.account_circle_outlined),
-              iconSize: 35.0, // Increased icon size
+              icon: const Icon(Icons.account_circle_outlined), // Color will be from actionsIconTheme
+              iconSize: 35.0,
               tooltip: 'Profile',
               onPressed: () {
-                _onItemTapped(3); // Index 3 is for the ProfileTab
+                _onItemTapped(3);
               },
             ),
           ),
         ],
       ),
-      body: Center(
-        child: _widgetOptions.elementAt(_selectedIndex),
-      ),
+      body: _widgetOptions.elementAt(_selectedIndex),
       bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(), // Creates a notch for the FAB
-        notchMargin: 6.0, // Margin for the notch
+        shape: const CircularNotchedRectangle(),
+        notchMargin: 6.0,
+        color: colorScheme.surface, // BottomAppBar is light
+        elevation: 8.0,
         child: SizedBox(
           height: 60.0,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: <Widget>[
               _buildNavItem(Icons.grid_view_rounded, 'Produce', 0),
-              _buildNavItem(Icons.search, 'Requests', 1), // Using search icon as per image
+              _buildNavItem(Icons.search, 'Requests', 1),
               const SizedBox(width: 40), // The space for the FAB
               _buildNavItem(Icons.notifications_outlined, 'Alerts', 2),
               _buildNavItem(Icons.person_outline, 'Profile', 3),
@@ -94,34 +117,35 @@ class _MainBuyerScreenState extends State<MainBuyerScreen> {
           );
         },
         tooltip: 'Make a Produce Request',
-        backgroundColor: Colors.redAccent, // Matching the color in the image
+        backgroundColor: Colors.redAccent, // This is the FAB's own color
         child: const Icon(Icons.add, color: Colors.white),
-          shape: const CircleBorder(),
+        shape: const CircleBorder(),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked, // Docks the FAB in the center
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 
   // Helper method to build navigation bar items to reduce redundancy
   Widget _buildNavItem(IconData icon, String label, int index) {
     final bool isSelected = _selectedIndex == index;
+    final colorScheme = Theme.of(context).colorScheme;
     return Expanded(
       child: InkWell(
         onTap: () => _onItemTapped(index),
-        borderRadius: BorderRadius.circular(20), // Optional: for ripple effect shape
+        borderRadius: BorderRadius.circular(20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Icon(
               icon,
-              color: isSelected ? Theme.of(context).primaryColor : Colors.grey,
+              color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.6),
             ),
             Text(
               label,
               style: TextStyle(
-                fontSize: 10, // Adjusted for better fit
-                color: isSelected ? Theme.of(context).primaryColor : Colors.grey,
+                fontSize: 10,
+                color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.6),
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
             ),
