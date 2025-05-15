@@ -168,14 +168,14 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     mainAxisAlignment: MainAxisAlignment.end, // Align to bottom of available space
                     children: [
                       Image.asset(
-                        'assets/animo_logo.png', // Ensure asset exists
+                        'assets/animo_full_logo.png', // Ensure asset exists
                         height: 150.0,
                       ),
-                      const SizedBox(height: 15.0),
+                      const SizedBox(height: 8.0),
                       Text(
                         'Welcome to AniMo',
                         style: TextStyle(
-                          color: _darkTextColor,
+                          color: Theme.of(context).colorScheme.onSecondaryFixedVariant,
                           fontSize: 24,
                           fontWeight: FontWeight.bold,
                         ),
