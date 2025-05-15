@@ -459,7 +459,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> with SingleTick
                 top: 10,
                 left: 10,
                 child: IconButton(
-                  icon: Icon(Icons.arrow_back_ios_new, color: Colors.white), // White for better visibility on image
+                  icon: Icon(Icons.arrow_back_ios_new, color: Colors.black), // White for better visibility on image
                   onPressed: () {
                     if (Navigator.canPop(context)) {
                       Navigator.pop(context);
