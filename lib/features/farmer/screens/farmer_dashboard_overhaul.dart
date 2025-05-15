@@ -142,14 +142,19 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
-            child: CircleAvatar(
-              backgroundImage: NetworkImage(profileImageUrl),
-              onBackgroundImageError: (exception, stackTrace) {
-                // Handle image loading error
-                print('Error loading profile image: $exception');
+            child: GestureDetector(
+              onTap: () async {
+                  await authService.signOut();
               },
-              radius: 20,
-            ),
+              child: CircleAvatar(
+                backgroundImage: NetworkImage(profileImageUrl),
+                onBackgroundImageError: (exception, stackTrace) {
+                  // Handle image loading error
+                  print('Error loading profile image: $exception');
+                },
+                radius: 20,
+              ),
+            )
           ),
         ],
       ),
