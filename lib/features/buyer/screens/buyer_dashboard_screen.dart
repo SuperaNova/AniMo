@@ -166,8 +166,7 @@ class BuyerDashboardScreen extends StatelessWidget {
                             Text('Desired: ${request.quantityNeeded.toStringAsFixed(1)} ${request.quantityUnit}'),
                             Text('Status: $requestStatus'),
                             Text('Requested: ${DateFormat.yMMMd().format(request.requestDateTime.toDate())}'),
-                            if (request.deliveryDeadline != null)
-                              Text('Needed by: ${DateFormat.yMMMd().format(request.deliveryDeadline.toDate())}'),
+                            Text('Needed by: ${DateFormat.yMMMd().format(request.deliveryDeadline.toDate())}'),
                           ],
                         ),
                         trailing: Row(

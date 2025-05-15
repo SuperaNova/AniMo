@@ -7,6 +7,7 @@ import 'package:animo/core/widgets/auth_wrapper.dart';
 import 'firebase_options.dart'; // Ensure this is uncommented and present
 import 'package:animo/features/auth/screens/login_screen.dart';
 import 'package:animo/services/firestore_service.dart';
+import 'package:animo/theme/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +28,8 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final customTheme = MaterialTheme(ThemeData.light().textTheme); // Use default or customize
+
     return MultiProvider(
       providers: [
         Provider<FirebaseAuthService>(
@@ -42,15 +45,12 @@ class MyApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: 'AniMo',
-        theme: ThemeData(
-          primarySwatch: Colors.green,
-          visualDensity: VisualDensity.adaptivePlatformDensity,
-          // Consider adding a more complete theme later
-        ),
+        theme: customTheme.light(),
+        darkTheme: customTheme.dark(),
+        themeMode: ThemeMode.system,
         home: const AuthWrapper(),
         routes: {
           '/login': (context) => const LoginScreen(),
-          // Define other routes as needed
         },
       ),
     );

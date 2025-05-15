@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import './produce_listing.dart'; // For ProduceListing reference
-import './buyer_request.dart'; // For BuyerRequest reference
+// For ProduceListing reference
+// For BuyerRequest reference
 // import './order.dart'; // Potentially for Order reference
 
 enum MatchStatus {
