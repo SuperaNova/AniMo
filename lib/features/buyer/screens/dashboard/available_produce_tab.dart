@@ -1,3 +1,5 @@
+// available_produce_tab.dart
+
 import 'package:animo/features/buyer/screens/produce_listing_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -6,7 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:animo/core/models/produce_listing.dart';
 import 'package:animo/core/models/match_suggestion.dart';
 import 'package:animo/services/firestore_service.dart';
-import 'package:animo/theme/theme.dart';
+// import 'package:animo/theme/theme.dart'; // Assuming this was for testing, not strictly needed for this change
 import 'package:animo/core/screens/map_picker_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:cloud_firestore/cloud_firestore.dart'; // Added for FieldValue
@@ -71,7 +73,6 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
   ProductCategoryFilter _selectedCategory = ProductCategoryFilter.all;
 
   bool _isLoadingUserAddress = true;
-  // No need for _initialUserAddressFetched if UI updates directly based on _selectedLocationText
 
   @override
   void initState() {
@@ -101,7 +102,6 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
       }
     } catch (e) {
       debugPrint("Error loading default address: $e");
-      // Optionally show a snackbar or message to the user
     } finally {
       if (mounted) setState(() => _isLoadingUserAddress = false);
     }
@@ -115,7 +115,7 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
     if (result != null) {
       final String? addressString = result['address'] as String?;
       final LatLng? coordinates = result['latlng'] as LatLng?;
-      
+
       if (mounted) {
         setState(() {
           _selectedLocationText = addressString ?? 'No address selected';
@@ -123,7 +123,6 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
         });
       }
 
-      // Save to Firestore
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId != null && userId.isNotEmpty && addressString != null && coordinates != null) {
         final firestoreService = Provider.of<FirestoreService>(context, listen: false);
@@ -131,17 +130,15 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
           'formattedAddress': addressString,
           'latitude': coordinates.latitude,
           'longitude': coordinates.longitude,
-          'timestamp': FieldValue.serverTimestamp(), // Good practice to know when it was saved
+          'timestamp': FieldValue.serverTimestamp(),
         };
         try {
           await firestoreService.updateUserDefaultDeliveryLocation(userId, locationToSave);
-          // Optionally show a success message (e.g., SnackBar)
-          // ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Delivery address saved!')));
         } catch (e) {
           debugPrint("Error saving delivery address: $e");
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Could not save address: $e'))
+                SnackBar(content: Text('Could not save address: $e'))
             );
           }
         }
@@ -150,6 +147,32 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
   }
 
   final List<ProductCategoryFilter> _categories = ProductCategoryFilter.values;
+
+  // Helper function to create the slide left (from right) route
+  Route _createSlideRoute(Widget page) {
+    return PageRouteBuilder(
+      pageBuilder: (context, animation, secondaryAnimation) => page,
+      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+        const begin = Offset(1.0, 0.0); // Start from the right (off-screen)
+        const end = Offset.zero;      // End at the center (on-screen)
+        const curve = Curves.ease;     // Animation curve
+
+        var tween = Tween(begin: begin, end: end);
+        var curvedAnimation = CurvedAnimation(
+          parent: animation,
+          curve: curve,
+        );
+
+        return SlideTransition(
+          position: tween.animate(curvedAnimation),
+          child: child,
+        );
+      },
+      // Optionally, set transition duration:
+      // transitionDuration: const Duration(milliseconds: 300),
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -160,23 +183,22 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
     final Color topSheetColor = const Color(0xFF4A2E2B);
     final Color matchSuggestionContainerColor = const Color(0xFF8C524C);
     final Color matchSuggestionTextColor = Colors.white;
-    const double bottomSheetRadius = 20.0; // Define the radius for consistency
+    const double bottomSheetRadius = 20.0;
 
-    // Wrap the SingleChildScrollView with a Container to set the white background
     return Container(
-      color: Colors.white, // Main background color for the tab
+      color: Colors.white,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.only(bottom: 70.0), // Keep bottom padding for potential nav bars
+        padding: const EdgeInsets.only(bottom: 70.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Upper Container for Deliver To & Categories - This acts as the header part
+            // Upper Container
             Container(
               width: double.infinity,
               padding: const EdgeInsets.only(top: 16.0, bottom: 20.0, left: 16.0, right: 16.0),
               decoration: BoxDecoration(
                 color: topSheetColor,
-                borderRadius: BorderRadius.only(
+                borderRadius: const BorderRadius.only(
                   bottomLeft: Radius.circular(bottomSheetRadius),
                   bottomRight: Radius.circular(bottomSheetRadius),
                 ),
@@ -195,7 +217,7 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                           children: [
                             Text(
                               'DELIVER TO',
-                              style: textTheme.bodySmall?.copyWith(
+                              style: textTheme.bodySmall?.copyWith( // Changed from labelSmall for slightly better size
                                 color: Colors.white.withOpacity(0.7),
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 0.5,
@@ -215,8 +237,8 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  _isLoadingUserAddress 
-                                      ? 'Loading address...' 
+                                  _isLoadingUserAddress
+                                      ? 'Loading address...'
                                       : (_selectedLocationText ?? 'Choose delivery address'),
                                   style: textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.bold,
@@ -278,7 +300,7 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                 elevation: 2,
                 margin: EdgeInsets.zero,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.0)),
-                color: matchSuggestionContainerColor, // This color will sit on the white background
+                color: matchSuggestionContainerColor,
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -288,13 +310,14 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                         'Match Suggestions for You:',
                         style: textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
-                            color: matchSuggestionTextColor // This is Colors.white, contrasts with matchSuggestionContainerColor
+                            color: matchSuggestionTextColor
                         ),
                       ),
                       const SizedBox(height: 8),
                       StreamBuilder<List<MatchSuggestion>>(
                         stream: firestoreService.getBuyerMatchSuggestions(),
                         builder: (context, snapshot) {
+                          // ... (your existing StreamBuilder for match suggestions, no changes needed here for animation)
                           if (snapshot.connectionState == ConnectionState.waiting) {
                             return Center(child: Padding(
                               padding: const EdgeInsets.all(8.0),
@@ -336,7 +359,7 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                                 margin: const EdgeInsets.only(bottom: 8.0),
                                 padding: const EdgeInsets.all(12.0),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.1), // Lighter highlight on the suggestion card
+                                  color: Colors.white.withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Row(
@@ -386,9 +409,8 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
               ),
             ),
 
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              // Divider will use theme's default dividerColor, which should be visible on white
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
               child: Divider(height: 16.0, thickness: 1.0),
             ),
 
@@ -397,13 +419,13 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
               padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 8.0),
               child: Text(
                 'Available Produce:',
-                // Use theme's default onSurface color which is typically dark on a light background
                 style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.onSurface),
               ),
             ),
             StreamBuilder<List<ProduceListing>>(
               stream: firestoreService.getAllAvailableProduceListings(),
               builder: (context, snapshot) {
+                // ... (your existing StreamBuilder for available produce)
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return Center(child: Padding(
                     padding: const EdgeInsets.all(8.0),
@@ -420,7 +442,6 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
-                      // Use onSurfaceVariant for less emphasis text on a light background
                       child: Text('No produce currently available.', textAlign: TextAlign.center, style: TextStyle(fontSize: 16, color: colorScheme.onSurfaceVariant)),
                     ),
                   );
@@ -461,10 +482,8 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                       harvestInfo = DateFormat.yMMMd().format(listing.harvestTimestamp!);
                     }
 
-                    // Card with colorScheme.surfaceContainerLow should be fine on a white background.
-                    // Text colors colorScheme.onSurface and colorScheme.onSurfaceVariant are designed for this.
                     return Card(
-                      color: colorScheme.surfaceContainerLow, // Typically a light grey or off-white
+                      color: colorScheme.surfaceContainerLow,
                       margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                       elevation: 1.5,
                       shape: RoundedRectangleBorder(
@@ -474,10 +493,9 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                       child: InkWell(
                         borderRadius: BorderRadius.circular(12),
                         onTap: () {
+                          // MODIFIED: Use the custom route for navigation
                           Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => ProduceListingDetailScreen(listing: listing),
-                            ),
+                            _createSlideRoute(ProduceListingDetailScreen(listing: listing)),
                           );
                         },
                         child: Padding(
@@ -489,7 +507,7 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                                 width: 80,
                                 height: 80,
                                 decoration: BoxDecoration(
-                                  color: colorScheme.surfaceContainerHighest, // Slightly more prominent than surfaceContainerLow
+                                  color: colorScheme.surfaceContainerHighest,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                                 child: listing.photoUrls.isNotEmpty
