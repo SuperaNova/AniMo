@@ -182,6 +182,26 @@ class FirestoreService {
     return docRef.id;
   }
 
+  Stream<List<app_order.Order>> getPickupOrdersForDriver() {
+    // No currentUserId check here, as drivers might see all available pickups initially,
+    // or this could be filtered further if drivers are assigned to specific zones/orders.
+    // For now, fetching orders that are generally ready for any driver.
+    return _db
+        .collection('orders')
+        .where('status', whereIn: [
+          app_order.OrderStatus.confirmed_by_platform.name,
+          app_order.OrderStatus.searching_for_driver.name,
+          // Could also include orders assigned to THIS driver if a 'assignedDriverId' field is reliably used
+          // For example, if currentUserId != null: .where('assignedDriverId', isEqualTo: currentUserId)
+          // But that would require combining queries or adjusting logic if a driver sees both general and assigned.
+        ])
+        .orderBy('createdAt', descending: true) // Show newer orders first
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => app_order.Order.fromFirestore(doc.data(), doc.id))
+            .toList());
+  }
+
   Future<FarmerStats> getFarmerStats() async {
     if (currentUserId == null) {
       throw Exception("User not logged in. Cannot fetch farmer stats.");
@@ -301,4 +321,81 @@ class FirestoreService {
     }
   }
 
+  Stream<List<ProduceListing>> getFarmerListings(String farmerId) {
+    return _db
+        .collection('produceListings')
+        .where('farmerId', isEqualTo: farmerId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) => snapshot.docs
+            .map((doc) => ProduceListing.fromFirestore(doc.data(), doc.id))
+            .toList());
+  }
+
+  // Method to get orders for a specific buyer
+  Stream<List<app_order.Order>> getOrdersForBuyer(String buyerId) {
+    return _db
+        .collection('orders')
+        .where('buyerId', isEqualTo: buyerId)
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return app_order.Order.fromFirestore(doc.data(), doc.id);
+      }).toList();
+    });
+  }
+
+  // Method to get active orders for a specific driver
+  Stream<List<app_order.Order>> getDriverActiveOrders(String driverId) {
+    return _db
+        .collection('orders')
+        .where('assignedDriverId', isEqualTo: driverId)
+        .where('status', whereIn: [
+          app_order.OrderStatus.driver_assigned.name,
+          app_order.OrderStatus.driver_en_route_to_pickup.name,
+          app_order.OrderStatus.at_pickup_location.name,
+          app_order.OrderStatus.picked_up.name,
+          app_order.OrderStatus.en_route_to_delivery.name,
+          app_order.OrderStatus.at_delivery_location.name,
+        ])
+        .orderBy('createdAt', descending: true) // Or perhaps by lastUpdated or a specific delivery priority field
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        return app_order.Order.fromFirestore(doc.data(), doc.id);
+      }).toList();
+    });
+  }
+
+  // Method for driver to update order status, e.g., to delivered
+  Future<void> updateOrderStatusForDriver(String orderId, String driverId, app_order.OrderStatus newStatus) async {
+    // Ensure the logged-in user is the one performing this action if critical,
+    // though driverId parameter already helps scope this.
+    if (currentUserId == null || currentUserId != driverId) {
+      throw Exception("User not authorized or not logged in to update this order for driver actions.");
+    }
+
+    Map<String, dynamic> updateData = {
+      'status': newStatus.name,
+      'lastUpdated': FieldValue.serverTimestamp(),
+    };
+
+    // If moving to 'delivered', also set actualDeliveryTime
+    if (newStatus == app_order.OrderStatus.delivered) {
+      updateData['actualDeliveryTime'] = FieldValue.serverTimestamp();
+      // Potentially add a new entry to statusHistory here as well
+    }
+    // If moving to other statuses like 'at_pickup_location', 'picked_up', driver could log those times too.
+    // For instance, if newStatus == app_order.OrderStatus.picked_up:
+    // updateData['actualPickupTime'] = FieldValue.serverTimestamp();
+
+
+    await _db.collection('orders').doc(orderId).update(updateData);
+
+    // Optional: Add to status history (if your Order model and Firestore structure supports it clearly)
+    // Example: Add a new OrderStatusUpdate object to the statusHistory array.
+    // This might require fetching the order first, adding to the list, then updating, or using FieldValue.arrayUnion.
+    // For simplicity, direct status update is done. Status history can be a more advanced feature or handled by backend triggers.
+  }
 } 
