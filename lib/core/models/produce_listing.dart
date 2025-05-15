@@ -34,8 +34,25 @@ enum ProduceCategory {
         return Colors.grey;
     }
   }
-}
 
+  // Helper to get an icon for a produce category for ActivityItem
+  IconData get icon {
+    switch (this) {
+      case ProduceCategory.vegetable:
+        return Icons.eco_rounded;
+      case ProduceCategory.fruit:
+        return Icons.apple_rounded;
+      case ProduceCategory.herb:
+        return Icons.grass_rounded;
+      case ProduceCategory.grain:
+        return Icons.grain_rounded;
+      case ProduceCategory.processed:
+        return Icons.settings_applications_outlined;
+      case ProduceCategory.other:
+        return Icons.category_rounded;
+    }
+  }
+}
 
 enum ProduceListingStatus {
   available('Available'),
@@ -59,7 +76,6 @@ ProduceListingStatus produceListingStatusFromString(String? statusString) {
         orElse: () => ProduceListingStatus.available, // Default or error
       );
 }
-
 
 class ProduceListing {
   final String? id;

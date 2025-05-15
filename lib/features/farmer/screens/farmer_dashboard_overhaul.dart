@@ -1,84 +1,13 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:math' as math;
 
+import '../../../core/models/activity_item.dart';
+import '../../../core/models/farmer_stats.dart';
 import '../../../core/models/produce_listing.dart';
 import '../../../services/firebase_auth_service.dart';
 import '../../../services/firestore_service.dart';
 import 'add_edit_produce_listing_screen.dart';
-
-// Placeholder for data models that would come from your services
-class FarmerStats {
-  final int totalActiveListings;
-  final double totalListingsValue;
-  final int pendingMatchSuggestions;
-  final List<ActivityItem> recentActivity;
-  final String farmerName;
-
-  FarmerStats({
-    required this.totalActiveListings,
-    required this.totalListingsValue,
-    required this.pendingMatchSuggestions,
-    required this.recentActivity,
-    required this.farmerName,
-  });
-}
-
-class ActivityItem {
-  final IconData icon;
-  final Color iconBgColor;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-  final String trailingText; // e.g., amount or status
-
-  ActivityItem({
-    required this.icon,
-    required this.iconBgColor,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    required this.trailingText,
-  });
-}
-
-void main() {
-  // Example: In a real app, you'd fetch this data after login or from a state manager
-  final sampleFarmerStats = FarmerStats(
-    farmerName: "J. Doe", // Example farmer name
-    totalActiveListings: 5,
-    totalListingsValue: 18840.00,
-    pendingMatchSuggestions: 3,
-    recentActivity: [
-      ActivityItem(
-        icon: Icons.eco_outlined,
-        iconBgColor: Colors.green.shade100,
-        iconColor: Colors.green.shade700,
-        title: 'New Listing: Apples',
-        subtitle: '100 kg, Grade A',
-        trailingText: '+ \$550.00 est.',
-      ),
-      ActivityItem(
-        icon: Icons.handshake_outlined,
-        iconBgColor: Colors.blue.shade100,
-        iconColor: Colors.blue.shade700,
-        title: 'Match Accepted: Carrots',
-        subtitle: 'Buyer: FreshMart Inc.',
-        trailingText: 'Confirmed',
-      ),
-      ActivityItem(
-        icon: Icons.eco_outlined,
-        iconBgColor: Colors.orange.shade100,
-        iconColor: Colors.orange.shade700,
-        title: 'New Listing: Oranges',
-        subtitle: '50 crates, Valencia',
-        trailingText: '+ \$1200.00 est.',
-      ),
-    ],
-  );
-
-  runApp(NewFarmerDashboard());
-}
 
 // Main application widget
 class NewFarmerDashboard extends StatelessWidget {
@@ -101,21 +30,7 @@ class NewFarmerDashboard extends StatelessWidget {
 
 // The main screen widget
 class StatisticsScreen extends StatefulWidget {
-  final FarmerStats stats = FarmerStats(
-    totalActiveListings: 0,
-    totalListingsValue: 0,
-    pendingMatchSuggestions: 0,
-    recentActivity: [
-      ActivityItem(
-      icon: Icons.eco_outlined,
-      iconBgColor: Colors.green.shade100,
-      iconColor: Colors.green.shade700,
-      title: 'New Listing: Apples',
-      subtitle: '100 kg, Grade A',
-      trailingText: '+ \$550.00 est.'
-    )],
-    farmerName: "James Ewican");
-  StatisticsScreen({super.key});
+  const StatisticsScreen({super.key});
 
   @override
   State<StatisticsScreen> createState() => _StatisticsScreenState();
@@ -125,11 +40,49 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   String _selectedPeriod = 'Day'; // For 'Total'/'Day' toggle
   String? _selectedWeek = 'Week'; // For dropdown
 
+  late final FirebaseAuthService _authService;
+  late final FirestoreService _firestoreService;
+  FarmerStats? _farmerStats;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _authService = Provider.of<FirebaseAuthService>(context, listen: false);
+    _firestoreService = Provider.of<FirestoreService>(context, listen: false);;
+    _fetchFarmerStats();
+  }
+
+  Future<void> _fetchFarmerStats() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final stats = await _firestoreService.getFarmerStats();
+      setState(() {
+        _farmerStats = stats;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = "Failed to load farmer stats: $e";
+        _isLoading = false;
+      });
+      if (kDebugMode) {
+        print("Error fetching farmer stats: $e");
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // In a real app, user data (like profile image) might come from widget.stats or another service
-    final authService = Provider.of<FirebaseAuthService>(context, listen: false);
-    final String profileImageUrl = 'https://placehold.co/100x100/orange/white?text=${widget.stats.farmerName.isNotEmpty ? widget.stats.farmerName[0].toUpperCase() : "U"}';
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    final String profileImageUrl = 'https://placehold.co/100x100/orange/white?text=${_farmerStats!.farmerName.isNotEmpty ? _farmerStats!.farmerName[0].toUpperCase() : "U"}';
 
     return Scaffold(
       appBar: AppBar(
@@ -144,7 +97,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             padding: const EdgeInsets.only(right: 16.0),
             child: GestureDetector(
               onTap: () async {
-                  await authService.signOut();
+                  await _authService.signOut();
               },
               child: CircleAvatar(
                 backgroundImage: NetworkImage(profileImageUrl),
@@ -161,9 +114,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
-            _buildStatisticsCard(context, widget.stats),
-            _buildUpcomingPaymentsCard(context, widget.stats),
-            _buildHistorySection(context, widget.stats),
+            _buildStatisticsCard(context, _farmerStats!),
+            _buildUpcomingPaymentsCard(context, _farmerStats!),
+            _buildHistorySection(context, _farmerStats!),
             const SizedBox(height: 80), // Space for FAB and BottomNav
           ],
         ),
@@ -171,12 +124,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          if (authService.currentFirebaseUser != null) {
+          if (_authService.currentFirebaseUser != null) {
             Navigator.of(context).push(
               MaterialPageRoute(
                 builder: (context) => AddEditProduceListingScreen(
-                  farmerId: authService.currentFirebaseUser!.uid,
-                  farmerName: authService.currentFirebaseUser!.displayName,
+                  farmerId: _authService.currentFirebaseUser!.uid,
+                  farmerName: _authService.currentFirebaseUser!.displayName,
                 ),
               ),
             );
@@ -461,7 +414,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             )
           else
             StreamBuilder<List<ProduceListing>>(
-              stream: firestoreService.getFarmerProduceListings(),
+              stream: firestoreService.getActiveListings(_authService.currentFirebaseUser!.uid),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -482,77 +435,16 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 return ListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  itemCount: listings.length,
+                  itemCount: stats.recentActivity.length > 3 ? 3 : stats.recentActivity.length, // Show max 3 items or less
                   itemBuilder: (context, index) {
-                    final listing = listings[index];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                      child: ListTile(
-                        title: Text(listing.produceName),
-                        subtitle: Text(
-                            'Quantity: ${listing.quantity} ${listing.unit}${listing.estimatedWeightKgPerUnit != null ? " (~${(listing.quantity * listing.estimatedWeightKgPerUnit!).toStringAsFixed(1)}kg total)" : ""}\nCategory: ${listing.produceCategory.displayName}${listing.customProduceCategory != null && listing.customProduceCategory!.isNotEmpty ? " (${listing.customProduceCategory})" : ""}\nPrice: ${listing.pricePerUnit} ${listing.currency} per ${listing.unit}'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit, color: Colors.blue),
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (context) => AddEditProduceListingScreen(
-                                        farmerId: listing.farmerId,
-                                        farmerName: listing.farmerName,
-                                        existingListing: listing
-                                    ),
-                                  ),
-                                );
-                              },
-                              tooltip: 'Edit Listing',
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.red),
-                              onPressed: () async {
-                                final confirm = await showDialog<bool>(
-                                  context: context,
-                                  builder: (context) => AlertDialog(
-                                    title: const Text('Delete Listing?'),
-                                    content: Text(
-                                        'Are you sure you want to delete "${listing.produceName}"?'),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () => Navigator.of(context).pop(false),
-                                        child: const Text('Cancel'),
-                                      ),
-                                      TextButton(
-                                        onPressed: () => Navigator.of(context).pop(true),
-                                        child: const Text('Delete'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                if (confirm == true && listing.id != null) {
-                                  try {
-                                    await firestoreService.deleteProduceListing(listing.id!);
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text('Listing deleted successfully.')),
-                                      );
-                                    }
-                                  } catch (e) {
-                                    if (context.mounted) {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('Error deleting listing: $e')),
-                                      );
-                                    }
-                                  }
-                                }
-                              },
-                              tooltip: 'Delete Listing',
-                            ),
-                          ],
-                        ),
-                        isThreeLine: true,
-                      ),
+                    final activity = listings[index];
+                    return _buildHistoryItem(
+                      icon: activity.produceCategory.icon,
+                      iconBgColor: activity.produceCategory.color,
+                      iconColor: activity.produceCategory.color.withOpacity(0.2),
+                      title: activity.produceName,
+                      subtitle: activity.produceCategory.displayName,
+                      amountOrStatus: activity.status.displayName,
                     );
                   },
                 );
