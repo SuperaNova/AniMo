@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -116,7 +118,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           children: [
             _buildStatisticsCard(context, _farmerStats!),
             _buildUpcomingPaymentsCard(context, _farmerStats!),
-            _buildHistorySection(context, _farmerStats!),
+            _buildHistorySection(context),
             const SizedBox(height: 80), // Space for FAB and BottomNav
           ],
         ),
@@ -381,23 +383,25 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  Widget _buildHistorySection(BuildContext context, FarmerStats stats) {
-    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+  Widget _buildHistorySection(BuildContext context /*, FarmerStats stats - This might not be needed if activity comes from stream */) {
+    // Access services - ensure these are correctly provided in your widget tree
+    final String? currentUserId = _authService.currentFirebaseUser?.uid;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start, // Align title to the start
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Recent Activity', // Changed title
+                'Recent Activity', // Or "Active Listings" if more appropriate
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2E2B)),
               ),
               TextButton(
                 onPressed: () {
-                  // Navigate to full history/activity screen
+                  // Navigate to full history/activity or listings screen
                 },
                 child: const Text(
                   'More',
@@ -407,49 +411,62 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             ],
           ),
           const SizedBox(height: 10),
-          if (stats.recentActivity.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20.0),
-              child: Text("No recent activity.", style: TextStyle(color: Colors.grey)),
-            )
-          else
-            StreamBuilder<List<ProduceListing>>(
-              stream: firestoreService.getActiveListings(_authService.currentFirebaseUser!.uid),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  debugPrint("Error in FarmerDashboard Listings StreamBuilder: ${snapshot.error}");
-                  debugPrintStack(stackTrace: snapshot.stackTrace);
-                  return Center(child: Text('Error fetching listings: ${snapshot.error}'));
-                }
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text('You have no active produce listings. Tap + to add one.'),
-                  ));
-                }
+          // StreamBuilder now correctly drives the list's content and states
+          StreamBuilder<List<ProduceListing>>(
+            // Use produceListingService, not firestoreService if that's the renamed class
+            stream: currentUserId != null && currentUserId.isNotEmpty
+                ? _firestoreService.getFarmerProduceListings() // Assuming getFarmerProduceListings uses currentUserId internally
+                : Stream.value([]), // Return empty stream if no user ID
+            builder: (context, snapshot) {
+              if (currentUserId == null || currentUserId.isEmpty) {
+                return const Center(child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('User not identified. Cannot load listings.'),
+                ));
+              }
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                debugPrint("Error in Recent Activity StreamBuilder: ${snapshot.error}");
+                debugPrintStack(stackTrace: snapshot.stackTrace);
+                return Center(child: Text('Error fetching listings: ${snapshot.error}'));
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const Center(child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: Text('No active produce listings found.'), // Updated message
+                ));
+              }
 
-                final listings = snapshot.data!;
-                return ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: stats.recentActivity.length > 3 ? 3 : stats.recentActivity.length, // Show max 3 items or less
-                  itemBuilder: (context, index) {
-                    final activity = listings[index];
-                    return _buildHistoryItem(
-                      icon: activity.produceCategory.icon,
-                      iconBgColor: activity.produceCategory.color,
-                      iconColor: activity.produceCategory.color.withOpacity(0.2),
-                      title: activity.produceName,
-                      subtitle: activity.produceCategory.displayName,
-                      amountOrStatus: activity.status.displayName,
-                    );
-                  },
-                );
-              },
-            )
+              final listings = snapshot.data!;
+              // Determine the number of items to show, e.g., max 3 or all
+              final itemCount = math.min(listings.length, 3); // Show up to 3 items
+
+              return ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: itemCount, // Correct itemCount based on loaded listings
+                itemBuilder: (context, index) {
+                  final listingItem = listings[index]; // Use the item from the stream's data
+
+                  // Ensure your _buildHistoryItem can handle ProduceListing
+                  // or adapt the data passed to it.
+                  // The properties you're using (produceCategory.icon, etc.)
+                  // seem to align with the ProduceListing model.
+                  return _buildHistoryItem(
+                    icon: listingItem.produceCategory.icon,
+                    // To get a lighter background from the category color:
+                    iconBgColor: listingItem.produceCategory.color.withOpacity(0.15),
+                    iconColor: listingItem.produceCategory.color, // Icon itself can be the primary color
+                    title: listingItem.produceName,
+                    subtitle: listingItem.produceCategory.displayName,
+                    amountOrStatus: listingItem.status.displayName, // Or price, quantity, etc.
+                  );
+                },
+              );
+            },
+          )
         ],
       ),
     );
