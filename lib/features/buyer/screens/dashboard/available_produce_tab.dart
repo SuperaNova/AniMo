@@ -1,4 +1,3 @@
-
 import 'package:animo/features/buyer/screens/produce_listing_detail_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -7,7 +6,10 @@ import 'package:intl/intl.dart';
 import 'package:animo/core/models/produce_listing.dart';
 import 'package:animo/core/models/match_suggestion.dart';
 import 'package:animo/services/firestore_service.dart';
+import 'package:animo/theme/theme.dart';
 import 'package:animo/core/screens/map_picker_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
+import 'package:cloud_firestore/cloud_firestore.dart'; // Added for FieldValue
 
 // ProductCategoryFilter enum and extension (as you provided)
 enum ProductCategoryFilter { all, vegetable, fruit, herb, grain, processed }
@@ -68,16 +70,82 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
   LatLng? _selectedLocationCoordinates;
   ProductCategoryFilter _selectedCategory = ProductCategoryFilter.all;
 
+  bool _isLoadingUserAddress = true;
+  // No need for _initialUserAddressFetched if UI updates directly based on _selectedLocationText
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserDefaultAddress();
+  }
+
+  Future<void> _loadUserDefaultAddress() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null || userId.isEmpty) {
+      if (mounted) setState(() => _isLoadingUserAddress = false);
+      return;
+    }
+
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    try {
+      final Map<String, dynamic>? locationData = await firestoreService.getUserDefaultDeliveryLocation(userId);
+      if (mounted && locationData != null) {
+        setState(() {
+          _selectedLocationText = locationData['formattedAddress'] as String?;
+          final lat = locationData['latitude'] as double?;
+          final lng = locationData['longitude'] as double?;
+          if (lat != null && lng != null) {
+            _selectedLocationCoordinates = LatLng(lat, lng);
+          }
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading default address: $e");
+      // Optionally show a snackbar or message to the user
+    } finally {
+      if (mounted) setState(() => _isLoadingUserAddress = false);
+    }
+  }
+
   Future<void> _pickLocation() async {
     final result = await Navigator.of(context).push<Map<String, dynamic>>(
       MaterialPageRoute(builder: (context) => const MapPickerScreen()),
     );
 
     if (result != null) {
-      setState(() {
-        _selectedLocationText = result['address'] as String? ?? 'No address selected';
-        _selectedLocationCoordinates = result['latlng'] as LatLng?;
-      });
+      final String? addressString = result['address'] as String?;
+      final LatLng? coordinates = result['latlng'] as LatLng?;
+      
+      if (mounted) {
+        setState(() {
+          _selectedLocationText = addressString ?? 'No address selected';
+          _selectedLocationCoordinates = coordinates;
+        });
+      }
+
+      // Save to Firestore
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null && userId.isNotEmpty && addressString != null && coordinates != null) {
+        final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+        Map<String, dynamic> locationToSave = {
+          'formattedAddress': addressString,
+          'latitude': coordinates.latitude,
+          'longitude': coordinates.longitude,
+          'timestamp': FieldValue.serverTimestamp(), // Good practice to know when it was saved
+        };
+        try {
+          await firestoreService.updateUserDefaultDeliveryLocation(userId, locationToSave);
+          // Optionally show a success message (e.g., SnackBar)
+          // ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Delivery address saved!')));
+        } catch (e) {
+          debugPrint("Error saving delivery address: $e");
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Could not save address: $e'))
+            );
+          }
+        }
+      }
     }
   }
 
@@ -89,6 +157,7 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
+    final Color topSheetColor = const Color(0xFF4A2E2B);
     final Color matchSuggestionContainerColor = const Color(0xFF8C524C);
     final Color matchSuggestionTextColor = Colors.white;
     const double bottomSheetRadius = 20.0; // Define the radius for consistency
@@ -105,9 +174,9 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
             Container(
               width: double.infinity,
               padding: const EdgeInsets.only(top: 16.0, bottom: 20.0, left: 16.0, right: 16.0),
-              decoration: const BoxDecoration(
-                color: Color(0xFF4A2E2B), // This is the color you wanted for the header
-                borderRadius: BorderRadius.only( // Rounded bottom corners
+              decoration: BoxDecoration(
+                color: topSheetColor,
+                borderRadius: BorderRadius.only(
                   bottomLeft: Radius.circular(bottomSheetRadius),
                   bottomRight: Radius.circular(bottomSheetRadius),
                 ),
@@ -122,13 +191,22 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'DELIVER TO',
-                          style: textTheme.labelSmall?.copyWith(
-                            color: Colors.white.withOpacity(0.7),
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 0.5,
-                          ),
+                        Row(
+                          children: [
+                            Text(
+                              'DELIVER TO',
+                              style: textTheme.bodySmall?.copyWith(
+                                color: Colors.white.withOpacity(0.7),
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            if (_isLoadingUserAddress)
+                              const Padding(
+                                padding: EdgeInsets.only(left: 8.0),
+                                child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white70)),
+                              ),
+                          ],
                         ),
                         const SizedBox(height: 6),
                         GestureDetector(
@@ -137,7 +215,9 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                             children: [
                               Expanded(
                                 child: Text(
-                                  _selectedLocationText ?? 'Choose delivery address',
+                                  _isLoadingUserAddress 
+                                      ? 'Loading address...' 
+                                      : (_selectedLocationText ?? 'Choose delivery address'),
                                   style: textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.bold,
                                     color: Colors.white,
@@ -166,20 +246,18 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                           selected: isSelected,
                           onSelected: (selected) {
                             if (selected) {
-                              setState(() {
-                                _selectedCategory = category;
-                              });
+                              setState(() => _selectedCategory = category);
                             }
                           },
                           backgroundColor: Colors.white.withOpacity(0.1),
                           selectedColor: colorScheme.primaryContainer,
                           labelStyle: TextStyle(
-                            color: isSelected ? colorScheme.onPrimaryContainer : Colors.brown ,
+                            color: isSelected ? colorScheme.onPrimaryContainer : colorScheme.primary,
                             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                           ),
                           shape: StadiumBorder(
                               side: BorderSide(
-                                color: isSelected ? colorScheme.primary : Colors.white.withOpacity(0.3),
+                                color: isSelected ? colorScheme.primary : colorScheme.primary.withOpacity(0.7),
                                 width: 1.5,
                               )),
                           elevation: 0,

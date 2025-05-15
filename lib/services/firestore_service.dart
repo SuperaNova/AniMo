@@ -243,4 +243,35 @@ class FirestoreService {
     return null;
   }
 
+  // Method to update user's default delivery location
+  Future<void> updateUserDefaultDeliveryLocation(String userId, Map<String, dynamic> locationData) async {
+    if (userId.isEmpty) throw Exception('User ID cannot be empty.');
+    try {
+      await _db.collection('users').doc(userId).update({
+        'defaultDeliveryLocation': locationData,
+        'updatedAt': FieldValue.serverTimestamp(), // Also update the user doc's last update time
+      });
+    } catch (e) {
+      print("Error updating user delivery location: $e");
+      // Optionally rethrow or handle more gracefully
+      rethrow;
+    }
+  }
+
+  // Method to get user's default delivery location
+  Future<Map<String, dynamic>?> getUserDefaultDeliveryLocation(String userId) async {
+    if (userId.isEmpty) return null;
+    try {
+      final docSnap = await _db.collection('users').doc(userId).get();
+      if (docSnap.exists && docSnap.data() != null) {
+        final data = docSnap.data()!;
+        return data['defaultDeliveryLocation'] as Map<String, dynamic>?;
+      }
+      return null;
+    } catch (e) {
+      print("Error fetching user delivery location: $e");
+      return null;
+    }
+  }
+
 } 
