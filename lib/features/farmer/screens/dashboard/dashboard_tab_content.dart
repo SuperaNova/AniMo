@@ -1,3 +1,4 @@
+import 'package:animo/core/models/order.dart';
 import 'package:animo/services/firebase_auth_service.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -59,7 +60,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> {
           _buildStatisticsCard(context, widget.farmerStats!),
           _buildMatchesPromptCard(context, widget.farmerStats!),
           // Use the shared buildRealtimeHistorySection, passing the service
-          buildRealtimeHistorySection(context, widget.firebaseAuthService),
+          buildCompletedOrdersSection(context, widget.firestoreService),
           const SizedBox(height: 80), // Space for FAB if content is long
         ],
       ),
@@ -319,11 +320,7 @@ Widget _buildMatchSuggestions(FarmerStats stats) { // Added BuildContext for pot
   );
 }
 
-// --- Realtime History Section Builder ---
-// This function builds the real-time history/activity list.
-// It was previously part of the main screen state but is now a utility function
-// or could be part of DashboardTabContent if only used there.
-Widget buildRealtimeHistorySection(BuildContext context, FirebaseAuthService authService) {
+Widget buildCompletedOrdersSection(BuildContext context, FirestoreService firestoreService) {
   final ProduceListingService produceListingService = Provider.of<ProduceListingService>(context);
 
   return Padding(
@@ -335,14 +332,14 @@ Widget buildRealtimeHistorySection(BuildContext context, FirebaseAuthService aut
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Recent Activity',
+              'Recently Completed Orders',
               style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2E2B)),
             ),
           ],
         ),
         const SizedBox(height: 10),
-        StreamBuilder<List<ProduceListing>>(
-          stream: produceListingService.getFarmerProduceListingsLimited(authService.currentFirebaseUser!.uid, 3),
+        StreamBuilder<List<Order>>(
+          stream: firestoreService.getFarmerOrders(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -361,13 +358,17 @@ Widget buildRealtimeHistorySection(BuildContext context, FirebaseAuthService aut
               ));
             }
             final listings = snapshot.data!;
-            final List<ActivityItem> recentActivities = listings.map((listing) {
+            List<Order> completedOrders = listings.where((order) {
+              return order.status == OrderStatus.completed;
+            }).toList();
+            final List<ActivityItem> recentActivities = completedOrders.map((listing) {
+              final date = listing.lastUpdated;
               return ActivityItem(
                 icon: listing.produceCategory.icon,
                 iconBgColor: listing.produceCategory.color.withOpacity(0.15),
                 iconColor: listing.produceCategory.color,
                 title: listing.produceName,
-                subtitle: "${listing.quantity.toStringAsFixed(1)} ${listing.unit} - ${listing.produceCategory.displayName}",
+                subtitle: "${DateFormat('MMM').format(date)} ${date.day}, ${date.year}",
                 trailingText: listing.status.displayName,
               );
             }).toList();
@@ -375,7 +376,7 @@ Widget buildRealtimeHistorySection(BuildContext context, FirebaseAuthService aut
             if (itemCountToShow == 0) {
               return const Center(child: Padding(
                 padding: EdgeInsets.all(16.0),
-                child: Text('No recent activity to display.'),
+                child: Text('No recent orders to display.'),
               ));
             }
             return ListView.builder(
