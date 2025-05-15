@@ -10,6 +10,7 @@ import '../../../../core/models/farmer_stats.dart';
 import '../../../../core/models/produce_listing.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../../services/produce_listing_service.dart';
+import '../common_widgets.dart';
 
 // This widget now holds the content previously in _StatisticsScreenState._buildDashboardContent
 class DashboardTabContent extends StatefulWidget {
@@ -347,7 +348,7 @@ Widget buildRealtimeHistorySection(BuildContext context, FirebaseAuthService aut
               itemCount: itemCountToShow,
               itemBuilder: (context, index) {
                 final activity = recentActivities[index];
-                return _buildActivityDisplayItem(
+                return buildActivityDisplayItem(
                   icon: activity.icon,
                   iconBgColor: activity.iconBgColor,
                   iconColor: activity.iconColor,
@@ -360,33 +361,6 @@ Widget buildRealtimeHistorySection(BuildContext context, FirebaseAuthService aut
           },
         )
       ],
-    ),
-  );
-}
-
-Widget _buildActivityDisplayItem({
-  required IconData icon,
-  required Color iconBgColor,
-  required Color iconColor,
-  required String title,
-  required String subtitle,
-  required String amountOrStatus,
-}) {
-  return Card(
-    margin: const EdgeInsets.symmetric(vertical: 4.0),
-    elevation: 1.0,
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-    child: ListTile(
-      leading: CircleAvatar(
-        backgroundColor: iconBgColor,
-        child: Icon(icon, color: iconColor, size: 24),
-      ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
-      subtitle: Text(subtitle, style: TextStyle(fontSize: 13, color: Colors.grey[700])),
-      trailing: Text(
-        amountOrStatus,
-        style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: Color(0xFF4A2E2B)),
-      ),
     ),
   );
 }
