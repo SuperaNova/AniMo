@@ -29,7 +29,7 @@
 
   <title>animo</title>
   <link rel="manifest" href="manifest.json">
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAjewiCAaT7BJv3Y2LSQTI4H1iNlARx34I"></script>
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAjewiCAaT7BJv3Y2LSQTI4H1iNlARx34I" defer></script>
   
   
   <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
@@ -138,5 +138,15 @@
 
   <script src="flutter_bootstrap.js" async=""></script>
 
-
+  <script>
+    window.addEventListener('load', function() {
+      if (window.google && window.google.maps) {
+        console.log('SUCCESS: window.google.maps is available!');
+      } else if (window.google) {
+        console.error('ERROR: window.google is available, but window.google.maps is NOT.');
+      } else {
+        console.error('ERROR: window.google is NOT available.');
+      }
+    });
+  </script>
 </body></html>

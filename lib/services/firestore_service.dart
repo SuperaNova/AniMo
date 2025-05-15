@@ -1,6 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import '../core/models/activity_item.dart';
 import '../core/models/app_user.dart';
+import '../core/models/farmer_stats.dart';
 import '../core/models/produce_listing.dart';
 import '../core/models/match_suggestion.dart';
 import '../core/models/order.dart' as app_order;
@@ -150,6 +155,115 @@ class FirestoreService {
             .toList());
   }
 
+  Future<FarmerStats> getFarmerStats() async {
+    if (currentUserId == null) {
+      throw Exception("User not logged in. Cannot fetch farmer stats.");
+    }
+
+    String farmerName = "Unknown Farmer";
+
+    // fetch Farmer's Name using the existing getAppUser method
+    try {
+      final appUser = await getAppUser(currentUserId!);
+      if (appUser != null && appUser.displayName != null && appUser.displayName!.isNotEmpty) {
+        farmerName = appUser.displayName!;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint("Error fetching app user for farmer stats ($currentUserId): $e");
+      }
+      // Farmer name will remain "Unknown Farmer" or could be fetched from listings later
+    }
+
+    // Fetch Active ProduceListings for the farmer
+    // This is a one-time fetch, not a stream, for calculating current stats.
+    final activeListingsQuery = _db
+        .collection('produceListings')
+        .where('farmerId', isEqualTo: currentUserId)
+        .where('status', isEqualTo: ProduceListingStatus.available.name); // Using .name for enum
+
+    final activeListingsSnapshot = await activeListingsQuery.get();
+
+    List<ProduceListing> activeListings = activeListingsSnapshot.docs
+        .map((doc) => ProduceListing.fromFirestore(doc.data(), doc.id))
+        .toList();
+
+    // Fallback for farmer name if not found via AppUser and listings are available
+    if (farmerName == "Unknown Farmer" && activeListings.isNotEmpty) {
+      farmerName = activeListings.first.farmerName ?? "Unknown Farmer";
+    }
+
+    // Calculate totalActiveListings and totalListingsValue
+    int totalActiveListingsCount = activeListings.length;
+    double totalListingsValue = 0;
+    for (var listing in activeListings) {
+      // Ensure quantity is not null, default to 0 if it is (though schema implies it's required)
+      totalListingsValue += (listing.quantity) * (listing.pricePerUnit);
+    }
+
+    // Create recentActivity from active listings (sorted by creation date, newest first)
+    activeListings.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    List<ActivityItem> recentActivity = activeListings.map((listing) {
+      return ActivityItem(
+        icon: listing.produceCategory.icon,
+        iconBgColor: listing.produceCategory.color.withOpacity(0.15),
+        iconColor: listing.produceCategory.color,
+        title: listing.produceName,
+        subtitle: "${listing.quantity.toStringAsFixed(1)} ${listing.unit} - ${listing.produceCategory.displayName}",
+        trailingText: "${listing.pricePerUnit.toStringAsFixed(2)} ${listing.currency}",
+      );
+    }).toList();
+
+    // Fetch Pending MatchSuggestions for the farmer
+    // These are suggestions made *to* this farmer that they need to approve.
+    final pendingSuggestionsQuery = _db
+        .collection('matchSuggestions')
+        .where('farmerId', isEqualTo: currentUserId)
+        .where('status', isEqualTo: MatchStatus.pending_farmer_approval.name); // Using .name for enum
+
+    final pendingSuggestionsSnapshot = await pendingSuggestionsQuery.get();
+    int pendingMatchSuggestionsCount = pendingSuggestionsSnapshot.docs.length;
+
+    // Construct and return FarmerStats
+    return FarmerStats(
+      totalActiveListings: totalActiveListingsCount,
+      totalListingsValue: totalListingsValue,
+      pendingMatchSuggestions: pendingMatchSuggestionsCount,
+      recentActivity: recentActivity,
+      farmerName: farmerName,
+    );
+  }
+
+  Stream<List<ProduceListing>> getActiveListings(String farmerId) {
+    if (farmerId.isEmpty) {
+      // Return an empty stream or throw an error if farmerId is not available
+      debugPrint("Farmer ID is empty. Returning empty stream for active listings.");
+      return Stream.value([]);
+    }
+
+    try {
+      return _db
+          .collection('produceListings')
+          .where('farmerId', isEqualTo: farmerId)
+          .where('status', isEqualTo: ProduceListingStatus.available)
+          .orderBy('createdAt', descending: true)
+          .snapshots()
+          .map((snapshot) {
+        // Map each document snapshot to a ProduceListing object
+        return snapshot.docs
+            .map((doc) => ProduceListing.fromFirestore(doc.data as Map<String, dynamic>, doc.id))
+            .toList();
+      }).handleError((error) {
+        // Handle any errors during the stream processing
+        debugPrint("Error fetching active listings: $error");
+        return <ProduceListing>[]; // Return empty list on error
+      });
+    } catch (e) {
+      debugPrint("Exception in getActiveListings: $e");
+      return Stream.value([]); // Return an empty stream on exception
+    }
+  }
+
   // Helper to get AppUser data
   Future<AppUser?> getAppUser(String userId) async {
     final docSnap = await _db.collection('users').doc(userId).get();
@@ -158,4 +272,5 @@ class FirestoreService {
     }
     return null;
   }
+
 } 

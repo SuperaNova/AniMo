@@ -136,21 +136,19 @@ class _AddEditProduceListingScreenState
       lastDate: DateTime.now().add(const Duration(days: 30)), // Allow future dates too
     );
     if (pickedDate != null) {
-      final TimeOfDay? pickedTime = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(_harvestDateTime ?? DateTime.now()),
-      );
-      if (pickedTime != null) {
-        setState(() {
-          _harvestDateTime = DateTime(
-            pickedDate.year,
-            pickedDate.month,
-            pickedDate.day,
-            pickedTime.hour,
-            pickedTime.minute,
-          );
-        });
-      }
+      // No longer pick time, set it to midnight
+      setState(() {
+        _harvestDateTime = DateTime(
+          pickedDate.year,
+          pickedDate.month,
+          pickedDate.day,
+          0, // Hour
+          0, // Minute
+          0, // Second
+          0, // Millisecond
+          0, // Microsecond
+        );
+      });
     }
   }
 
@@ -160,7 +158,7 @@ class _AddEditProduceListingScreenState
     }
     if (_harvestDateTime == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please select a harvest date and time.')),
+        const SnackBar(content: Text('Please select a harvest date.')), // Updated message
       );
       return;
     }
@@ -261,8 +259,10 @@ class _AddEditProduceListingScreenState
           Navigator.of(context).pop();
         }
       }
-    } catch (e) {
+    } catch (e, s) {
       if (mounted) {
+        print("Error in _saveListing: ${e.toString()}");
+        print("Stack trace: ${s.toString()}");
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('An error occurred: ${e.toString()}')),
         );
@@ -383,8 +383,8 @@ class _AddEditProduceListingScreenState
                     ListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(_harvestDateTime == null
-                          ? 'Select Harvest Date & Time'
-                          : 'Harvested: ${DateFormat('yyyy-MM-dd HH:mm').format(_harvestDateTime!)}'),
+                          ? 'Select Harvest Date' // Updated text
+                          : 'Harvested: ${DateFormat('yyyy-MM-dd').format(_harvestDateTime!)}'), // Updated format
                       trailing: const Icon(Icons.calendar_today),
                       onTap: () => _selectHarvestDateTime(context),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4.0), side: BorderSide(color: Colors.grey.shade400)),

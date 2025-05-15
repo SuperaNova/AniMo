@@ -1,0 +1,32 @@
+# Auto detect text files and ensure they use LF line endings
+* text=auto eol=lf
+
+# Explicitly set LF for common source code and text file types
+*.ts text eol=lf
+*.js text eol=lf
+*.tsx text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.dart text eol=lf
+*.java text eol=lf
+*.kt text eol=lf
+*.swift text eol=lf
+*.py text eol=lf
+*.rb text eol=lf
+*.php text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.scss text eol=lf
+*.less text eol=lf
+*.xml text eol=lf
+*.gradle text eol=lf
+*.properties text eol=lf
+
+# Gitignore should also be LF
+.gitignore text eol=lf
+
+# For files that specifically need CRLF (e.g., Windows batch files, though less common in your project)
+# *.bat text eol=crlf 

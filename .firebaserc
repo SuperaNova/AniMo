@@ -1,6 +1,7 @@
 {
   "projects": {
-    "gdg": "animo-9fffb"
+    "gdg": "animo-9fffb",
+    "default": "animo-9fffb"
   },
   "targets": {},
   "etags": {}
