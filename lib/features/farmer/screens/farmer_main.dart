@@ -1,4 +1,4 @@
-import 'package:animo/features/farmer/screens/profile/profile_tab_content.dart';
+import 'package:animo/features/farmer/screens/profile/profile_screen.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -119,7 +119,7 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
             child: GestureDetector(
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(builder: (context) => const ProfileTabContent()),
+                  MaterialPageRoute(builder: (context) => const ProfileScreen()),
                 );
               },
               child: CircleAvatar(
@@ -127,7 +127,6 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
                 onBackgroundImageError: (exception, stackTrace) {
                   if (kDebugMode) print('Error loading profile image: $exception');
                 },
-                radius: 20,
               ),
             )
           ),

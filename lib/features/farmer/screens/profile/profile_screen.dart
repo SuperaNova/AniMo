@@ -4,8 +4,8 @@ import 'package:provider/provider.dart';
 
 import '../../../../services/firebase_auth_service.dart';
 
-class ProfileTabContent extends StatelessWidget {
-  const ProfileTabContent({super.key});
+class ProfileScreen extends StatelessWidget {
+  const ProfileScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
