@@ -104,12 +104,12 @@ export const onNewProduceListingForAiMatching = onDocumentCreated(
           suggestedOrderQuantityUnit: output.suggestedOrderQuantityUnit,
           aiMatchScore: output.aiMatchScore,
           aiMatchRationale: output.aiMatchRationale,
-          status: "pending_farmer_acceptance", // Initial status
+          status: "ai_suggestion_for_farmer",
           suggestionTimestamp: admin.firestore.FieldValue.serverTimestamp(),
           suggestionExpiryTimestamp: suggestionExpiryTimestamp,
         };
         batch.set(suggestionRef, suggestionData);
-        logger.info(`Creating MatchSuggestion ${suggestionRef.id} for listing ${output.listingId} and request ${output.buyerRequestId}.`);
+        logger.info(`Creating MatchSuggestion ${suggestionRef.id} (ai_suggestion_for_farmer) for new listing ${output.listingId} and existing request ${output.buyerRequestId}.`);
       }
     });
 
@@ -193,13 +193,20 @@ export const onNewBuyerRequestForAiMatching = onDocumentCreated(
     }
     logger.info(`Genkit flow returned ${matchOutputs.length} matches for request ${requestId}.`);
 
-    // 4. Process Genkit results and create MatchSuggestion documents
+    // --- Sort matches by score (descending) and take top N (e.g., 3) ---
+    const sortedMatches = matchOutputs.sort((a, b) => b.aiMatchScore - a.aiMatchScore);
+    const TOP_N_SUGGESTIONS = 3;
+    const selectedMatches = sortedMatches.slice(0, TOP_N_SUGGESTIONS);
+
+    logger.info(`Selected top ${selectedMatches.length} matches for request ${requestId} based on score.`);
+
+    // 4. Process selected Genkit results and create MatchSuggestion documents
     const batch = db.batch();
     const now = admin.firestore.Timestamp.now();
     const expiryDate = new Date(now.toDate().getTime() + SUGGESTION_TTL_HOURS * 60 * 60 * 1000);
     const suggestionExpiryTimestamp = admin.firestore.Timestamp.fromDate(expiryDate);
 
-    matchOutputs.forEach((output) => {
+    selectedMatches.forEach((output) => {
       if (output.aiMatchScore >= (genkitInput.config?.minScoreThreshold || MIN_AI_SCORE_THRESHOLD)) {
         const suggestionRef = db.collection("matchSuggestions").doc(); // Auto-generate ID
         const suggestionData: MatchSuggestionFirestoreData = {
@@ -213,18 +220,18 @@ export const onNewBuyerRequestForAiMatching = onDocumentCreated(
           suggestedOrderQuantityUnit: output.suggestedOrderQuantityUnit,
           aiMatchScore: output.aiMatchScore,
           aiMatchRationale: output.aiMatchRationale,
-          status: "pending_farmer_acceptance", // Initial status - farmer still primary for action
+          status: "ai_suggestion_for_buyer",
           suggestionTimestamp: admin.firestore.FieldValue.serverTimestamp(),
           suggestionExpiryTimestamp: suggestionExpiryTimestamp,
         };
         batch.set(suggestionRef, suggestionData);
-        logger.info(`Creating MatchSuggestion ${suggestionRef.id} for request ${output.buyerRequestId} and listing ${output.listingId}.`);
+        logger.info(`Creating MatchSuggestion ${suggestionRef.id} (ai_suggestion_for_buyer) for new request ${output.buyerRequestId} and existing listing ${output.listingId}.`);
       }
     });
 
     try {
       await batch.commit();
-      logger.info(`Successfully created ${matchOutputs.filter((o) => o.aiMatchScore >= (genkitInput.config?.minScoreThreshold || MIN_AI_SCORE_THRESHOLD)).length} match suggestions for request ${requestId}.`);
+      logger.info(`Successfully created ${selectedMatches.filter((o) => o.aiMatchScore >= (genkitInput.config?.minScoreThreshold || MIN_AI_SCORE_THRESHOLD)).length} match suggestions for request ${requestId}.`);
     } catch (error) {
       logger.error(`Error committing batch for match suggestions (request ${requestId}):`, error);
     }
