@@ -127,7 +127,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> {
           ),
           const SizedBox(height: 8),
           Text(
-            '\$ ${stats.totalListingsValue.toStringAsFixed(2)}',
+            stats.totalListingsValue.toStringAsFixed(2),
             style: const TextStyle(
                 color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold),
           ),
