@@ -1,11 +1,11 @@
 import 'package:animo/features/farmer/screens/profile/profile_tab_content.dart';
+import 'package:animo/services/firebase_auth_service.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/farmer_stats.dart';
-import '../../../services/firebase_auth_service.dart';
 import '../../../services/firestore_service.dart';
 import 'add_edit_produce_listing_screen.dart';
 import 'dashboard/dashboard_tab_content.dart';
