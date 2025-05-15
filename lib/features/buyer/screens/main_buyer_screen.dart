@@ -54,15 +54,16 @@ class _MainBuyerScreenState extends State<MainBuyerScreen> {
       appBar: AppBar(
         title: Text(_appBarTitles[_selectedIndex]),
         actions: [
-          // Logout button can remain here or be moved to the Profile tab
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
-            onPressed: () async {
-              await authService.signOut();
-              // Navigate to login screen, ensure you have a LoginScreen.routeName defined
-              // Navigator.of(context).pushNamedAndRemoveUntil(LoginScreen.routeName, (Route<dynamic> route) => false);
-            },
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0), // Adds 8.0 logical pixels of margin to the right
+            child: IconButton(
+              icon: const Icon(Icons.account_circle_outlined),
+              iconSize: 35.0, // Increased icon size
+              tooltip: 'Profile',
+              onPressed: () {
+                _onItemTapped(3); // Index 3 is for the ProfileTab
+              },
+            ),
           ),
         ],
       ),
@@ -95,6 +96,7 @@ class _MainBuyerScreenState extends State<MainBuyerScreen> {
         tooltip: 'Make a Produce Request',
         backgroundColor: Colors.redAccent, // Matching the color in the image
         child: const Icon(Icons.add, color: Colors.white),
+          shape: const CircleBorder(),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked, // Docks the FAB in the center
     );
