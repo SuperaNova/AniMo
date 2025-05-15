@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:animo/services/firebase_auth_service.dart';
+import 'package:animo/services/produce_listing_service.dart'; // Added import
 // import 'package:animo/core/models/app_user.dart'; // AppUser is used by AuthWrapper, not directly by StreamProvider here anymore
 import 'package:animo/core/widgets/auth_wrapper.dart'; // Ensure AuthWrapper is imported
 import 'firebase_options.dart'; // Ensure this is uncommented and present
@@ -43,6 +44,9 @@ class MyApp extends StatelessWidget {
         // Provide FirestoreService if it's used elsewhere in the app via Provider
         Provider<FirestoreService>(
           create: (_) => FirestoreService(),
+        ),
+        Provider<ProduceListingService>( // Added ProduceListingService
+          create: (_) => ProduceListingService(),
         ),
       ],
       child: MaterialApp(
