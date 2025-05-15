@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/activity_item.dart';
@@ -9,6 +10,7 @@ import '../../../core/models/farmer_stats.dart';
 import '../../../core/models/produce_listing.dart';
 import '../../../services/firebase_auth_service.dart';
 import '../../../services/firestore_service.dart';
+import '../../../services/produce_listing_service.dart';
 import 'add_edit_produce_listing_screen.dart';
 
 // Main application widget
@@ -17,20 +19,31 @@ class NewFarmerDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Farmer Dashboard UI',
-      theme: ThemeData(
-        primarySwatch: Colors.brown,
-        fontFamily: 'Poppins', // Example font, replace if needed
-        scaffoldBackgroundColor: const Color(0xFFF5F0E8), // Cream background
+    // Assuming FirebaseAuthService and FirestoreService are provided higher up
+    // For this example, we'll instantiate them directly or they can be provided.
+    return MultiProvider(
+      providers: [
+        Provider<FirebaseAuthService>(create: (_) => FirebaseAuthService()),
+        // FirestoreService might depend on FirebaseAuthService for currentUserId
+        ProxyProvider<FirebaseAuthService, FirestoreService>(
+          update: (context, authService, previousFirestoreService) =>
+              FirestoreService(),
+        ),
+      ],
+      child: MaterialApp(
+        title: 'Farmer Dashboard UI',
+        theme: ThemeData(
+          primarySwatch: Colors.brown,
+          fontFamily: 'Poppins',
+          scaffoldBackgroundColor: const Color(0xFFF5F0E8),
+        ),
+        home: const StatisticsScreen(), // Changed to const
+        debugShowCheckedModeBanner: false,
       ),
-      home: StatisticsScreen(),
-      debugShowCheckedModeBanner: false,
     );
   }
 }
 
-// The main screen widget
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
 
@@ -39,38 +52,50 @@ class StatisticsScreen extends StatefulWidget {
 }
 
 class _StatisticsScreenState extends State<StatisticsScreen> {
-  String _selectedPeriod = 'Day'; // For 'Total'/'Day' toggle
-  String? _selectedWeek = 'Week'; // For dropdown
+  int _selectedIndex = 0; // Index for the currently selected tab
+
+  String _selectedPeriod = 'Day';
+  String? _selectedWeek = 'Week';
 
   late final FirebaseAuthService _authService;
   late final FirestoreService _firestoreService;
   FarmerStats? _farmerStats;
-  bool _isLoading = true;
-  String? _errorMessage;
+  bool _isLoadingStats = true; // Separate loading for stats
+  String? _statsErrorMessage;
 
   @override
   void initState() {
     super.initState();
     _authService = Provider.of<FirebaseAuthService>(context, listen: false);
-    _firestoreService = Provider.of<FirestoreService>(context, listen: false);;
+    // FirestoreService is now dependent on authService for currentUserId
+    _firestoreService = Provider.of<FirestoreService>(context, listen: false);
     _fetchFarmerStats();
   }
 
   Future<void> _fetchFarmerStats() async {
+    if (!mounted) return;
     setState(() {
-      _isLoading = true;
-      _errorMessage = null;
+      _isLoadingStats = true;
+      _statsErrorMessage = null;
     });
     try {
+      // Ensure currentUserId is passed or set in FirestoreService
+      if (_authService.currentFirebaseUser?.uid == null) {
+        throw Exception("User not authenticated. Cannot fetch stats.");
+      }
+      // If your FirestoreService doesn't automatically use the auth user ID,
+      // you might need to ensure it's set, e.g., _firestoreService.currentUserId = _authService.currentFirebaseUser!.uid;
       final stats = await _firestoreService.getFarmerStats();
+      if (!mounted) return;
       setState(() {
         _farmerStats = stats;
-        _isLoading = false;
+        _isLoadingStats = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() {
-        _errorMessage = "Failed to load farmer stats: $e";
-        _isLoading = false;
+        _statsErrorMessage = "Failed to load farmer stats: ${e.toString()}";
+        _isLoadingStats = false;
       });
       if (kDebugMode) {
         print("Error fetching farmer stats: $e");
@@ -78,51 +103,97 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
+  // List of widgets to display for each tab
+  // We'll define these as separate methods or classes for clarity
+  List<Widget> _buildScreens() {
+    return [
+      _buildDashboardContent(), // Tab 0: Main statistics content
+      const AllListingsScreen(),    // Tab 1: Placeholder for "All Listings"
+      // Tab 2 is the FAB, so no screen here
+      const NotificationsScreen(),  // Tab 3: Placeholder for "Notifications"
+      const ProfileScreen(),        // Tab 4: Placeholder for "Profile"
+    ];
+  }
+
+  // Method to build the main dashboard content (your existing SingleChildScrollView)
+  Widget _buildDashboardContent() {
+    if (_isLoadingStats) {
       return const Center(child: CircularProgressIndicator());
     }
+    if (_statsErrorMessage != null) {
+      return Center(child: Text(_statsErrorMessage!, style: const TextStyle(color: Colors.red)));
+    }
+    if (_farmerStats == null) {
+      return const Center(child: Text("No farmer data available."));
+    }
 
-    final String profileImageUrl = 'https://placehold.co/100x100/orange/white?text=${_farmerStats!.farmerName.isNotEmpty ? _farmerStats!.farmerName[0].toUpperCase() : "U"}';
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          _buildStatisticsCard(context, _farmerStats!),
+          _buildUpcomingPaymentsCard(context, _farmerStats!),
+          _buildHistorySection(context, _firestoreService), // Pass the service instance
+          const SizedBox(height: 80),
+        ],
+      ),
+    );
+  }
+
+
+  void _onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+    // Here you could also use Navigator if your tabs represent completely different routes
+    // but for simple view switching, managing _selectedIndex is common.
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final List<Widget> screens = _buildScreens();
+    // Determine the correct body based on selectedIndex, handling the FAB gap.
+    // The actual content for index 0, 1, 2, 3 (mapping to UI buttons 0,1,3,4)
+    Widget currentScreen;
+    if (_selectedIndex == 0) currentScreen = screens[0]; // Dashboard
+    else if (_selectedIndex == 1) currentScreen = screens[1]; // All Listings
+    else if (_selectedIndex == 2) currentScreen = screens[2]; // Notifications (mapped from UI button 3)
+    else if (_selectedIndex == 3) currentScreen = screens[3]; // Profile (mapped from UI button 4)
+    else currentScreen = screens[0]; // Default to dashboard
+
+
+    final String profileImageUrl = _farmerStats != null && _farmerStats!.farmerName.isNotEmpty
+        ? 'https://placehold.co/100x100/orange/white?text=${_farmerStats!.farmerName[0].toUpperCase()}'
+        : 'https://placehold.co/100x100/grey/white?text=U';
+
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF4A2E2B), // Dark brown
+        backgroundColor: const Color(0xFF4A2E2B),
         elevation: 0,
-        title: const Text(
-          'Statistics', // Could be dynamic e.g., "Farmer Statistics"
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        title: Text(
+          _getAppBarTitle(_selectedIndex), // Dynamic AppBar title
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: GestureDetector(
-              onTap: () async {
+              padding: const EdgeInsets.only(right: 16.0),
+              child: GestureDetector(
+                onTap: () async {
                   await _authService.signOut();
-              },
-              child: CircleAvatar(
-                backgroundImage: NetworkImage(profileImageUrl),
-                onBackgroundImageError: (exception, stackTrace) {
-                  // Handle image loading error
-                  print('Error loading profile image: $exception');
+                  // Potentially navigate to login screen after sign out
                 },
-                radius: 20,
-              ),
-            )
+                child: CircleAvatar(
+                  backgroundImage: NetworkImage(profileImageUrl),
+                  onBackgroundImageError: (exception, stackTrace) {
+                    if (kDebugMode) print('Error loading profile image: $exception');
+                  },
+                  radius: 20,
+                ),
+              )
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            _buildStatisticsCard(context, _farmerStats!),
-            _buildUpcomingPaymentsCard(context, _farmerStats!),
-            _buildHistorySection(context),
-            const SizedBox(height: 80), // Space for FAB and BottomNav
-          ],
-        ),
-      ),
+      body: currentScreen, // Display the selected screen
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: FloatingActionButton(
         onPressed: () {
@@ -141,10 +212,10 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             );
           }
         },
-        backgroundColor: const Color(0xFFD95B5B), // Accent Red
+        backgroundColor: const Color(0xFFD95B5B),
         shape: const CircleBorder(),
         child: const Icon(Icons.add, color: Colors.white, size: 30),
-        tooltip: 'Add New Listing', // Tooltip from FarmerDashboardScreen
+        tooltip: 'Add New Listing',
       ),
       bottomNavigationBar: BottomAppBar(
         shape: const CircularNotchedRectangle(),
@@ -156,11 +227,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: <Widget>[
-              _buildBottomNavItem(Icons.widgets_outlined, true), // Example: first item selected
-              _buildBottomNavItem(Icons.search), // Could be search listings/matches
+              _buildBottomNavItem(icon: Icons.widgets_outlined, index: 0, label: "Dashboard"),
+              _buildBottomNavItem(icon: Icons.list_alt_outlined, index: 1, label: "Listings"),
               const SizedBox(width: 40), // The space for the FAB
-              _buildBottomNavItem(Icons.notifications_outlined), // For match suggestions/notifications
-              _buildBottomNavItem(Icons.person_outline), // Farmer profile
+              _buildBottomNavItem(icon: Icons.notifications_outlined, index: 2, label: "Alerts"),
+              _buildBottomNavItem(icon: Icons.person_outline, index: 3, label: "Profile"),
             ],
           ),
         ),
@@ -168,23 +239,35 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  // Builds individual bottom navigation items
-  Widget _buildBottomNavItem(IconData icon, [bool isSelected = false]) {
-    // In a real app, selection state would be managed
+  String _getAppBarTitle(int index) {
+    switch (index) {
+      case 0: return 'Statistics';
+      case 1: return 'All Listings';
+      case 2: return 'Notifications';
+      case 3: return 'Profile';
+      default: return 'Farmer Dashboard';
+    }
+  }
+
+  Widget _buildBottomNavItem({required IconData icon, required int index, required String label}) {
     return IconButton(
       icon: Icon(
         icon,
-        color: isSelected ? const Color(0xFFD95B5B) : Colors.grey[600],
+        color: _selectedIndex == index ? const Color(0xFFD95B5B) : Colors.grey[600],
         size: 28,
       ),
-      onPressed: () {
-        // Handle navigation for different sections
-      },
+      tooltip: label,
+      onPressed: () => _onItemTapped(index),
     );
   }
 
-  // Builds the top statistics card
+  // --- Methods for building UI sections (Statistics, Payments, History) ---
+  // These methods are largely the same as in your provided code,
+  // ensure they use _farmerStats correctly or fetch their own data if needed.
+
   Widget _buildStatisticsCard(BuildContext context, FarmerStats stats) {
+    // Your existing _buildStatisticsCard implementation
+    // Ensure it uses the `stats` parameter.
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20.0),
@@ -239,25 +322,24 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           ),
           const SizedBox(height: 20),
           Text(
-            // Could be "Last update: [date]" or current period
-            'As of ${DateTime.now().day} ${DateTime.now().month}, ${DateTime.now().year}',
+            'As of ${DateFormat('MMM').format(DateTime.now())} ${DateTime.now().day}, ${DateTime.now().year}',
             style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
           ),
           const SizedBox(height: 8),
           Text(
-            '\$ ${stats.totalListingsValue.toStringAsFixed(2)}', // Displaying total listing value
+            '\$ ${stats.totalListingsValue.toStringAsFixed(2)}',
             style: const TextStyle(
                 color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold),
           ),
           Text(
-            '${stats.totalActiveListings} Active Listings', // Displaying active listings count
+            '${stats.totalActiveListings} Active Listings',
             style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 16),
           ),
           const SizedBox(height: 20),
           SizedBox(
             height: 120,
             child: CustomPaint(
-              painter: SimplifiedGraphPainter(), // Graph could be adapted for farmer data
+              painter: SimplifiedGraphPainter(),
               child: Container(),
             ),
           ),
@@ -268,7 +350,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 .map((day) => Column(
               children: [
                 Text(day, style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 12)),
-                if (day == 'Fri')
+                if (day == DateFormat('E').format(DateTime.now()))
                   Container(
                     margin: const EdgeInsets.only(top: 4),
                     height: 4,
@@ -286,8 +368,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     color: Colors.white.withOpacity(0.5),
                   )
               ],
-            ))
-                .toList(),
+            )).toList(),
           ),
         ],
       ),
@@ -321,6 +402,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   }
 
   Widget _buildUpcomingPaymentsCard(BuildContext context, FarmerStats stats) {
+    // Your existing _buildUpcomingPaymentsCard implementation
     return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Container(
@@ -344,21 +426,19 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 color: Color(0xFFFFD700),
                 shape: BoxShape.circle,
               ),
-              // Icon representing suggestions or actions
               child: const Icon(Icons.lightbulb_outline, color: Color(0xFF4A2E2B), size: 28),
             ),
             const SizedBox(width: 16),
-            Expanded( // Use Expanded to prevent overflow if text is long
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Match Suggestions', // Changed title
+                    'Match Suggestions',
                     style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    // Displaying pending match suggestions count
                     '${stats.pendingMatchSuggestions} pending actions',
                     style: const TextStyle(
                         color: Colors.white,
@@ -368,7 +448,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ],
               ),
             ),
-            // const Spacer(), // Spacer might not be needed if Expanded is used
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
@@ -383,188 +462,166 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  Widget _buildHistorySection(BuildContext context /*, FarmerStats stats - This might not be needed if activity comes from stream */) {
-    // Access services - ensure these are correctly provided in your widget tree
-    final String? currentUserId = _authService.currentFirebaseUser?.uid;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start, // Align title to the start
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Recent Activity', // Or "Active Listings" if more appropriate
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2E2B)),
-              ),
-              TextButton(
-                onPressed: () {
-                  // Navigate to full history/activity or listings screen
-                },
-                child: const Text(
-                  'More',
-                  style: TextStyle(color: Color(0xFFD95B5B), fontWeight: FontWeight.w500),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // StreamBuilder now correctly drives the list's content and states
-          StreamBuilder<List<ProduceListing>>(
-            // Use produceListingService, not firestoreService if that's the renamed class
-            stream: currentUserId != null && currentUserId.isNotEmpty
-                ? _firestoreService.getFarmerProduceListings() // Assuming getFarmerProduceListings uses currentUserId internally
-                : Stream.value([]), // Return empty stream if no user ID
-            builder: (context, snapshot) {
-              if (currentUserId == null || currentUserId.isEmpty) {
-                return const Center(child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text('User not identified. Cannot load listings.'),
-                ));
-              }
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                debugPrint("Error in Recent Activity StreamBuilder: ${snapshot.error}");
-                debugPrintStack(stackTrace: snapshot.stackTrace);
-                return Center(child: Text('Error fetching listings: ${snapshot.error}'));
-              }
-              if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Center(child: Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text('No active produce listings found.'), // Updated message
-                ));
-              }
-
-              final listings = snapshot.data!;
-              // Determine the number of items to show, e.g., max 3 or all
-              final itemCount = math.min(listings.length, 3); // Show up to 3 items
-
-              return ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: itemCount, // Correct itemCount based on loaded listings
-                itemBuilder: (context, index) {
-                  final listingItem = listings[index]; // Use the item from the stream's data
-
-                  // Ensure your _buildHistoryItem can handle ProduceListing
-                  // or adapt the data passed to it.
-                  // The properties you're using (produceCategory.icon, etc.)
-                  // seem to align with the ProduceListing model.
-                  return _buildHistoryItem(
-                    icon: listingItem.produceCategory.icon,
-                    // To get a lighter background from the category color:
-                    iconBgColor: listingItem.produceCategory.color.withOpacity(0.15),
-                    iconColor: listingItem.produceCategory.color, // Icon itself can be the primary color
-                    title: listingItem.produceName,
-                    subtitle: listingItem.produceCategory.displayName,
-                    amountOrStatus: listingItem.status.displayName, // Or price, quantity, etc.
-                  );
-                },
-              );
-            },
-          )
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHistoryItem({
-    required IconData icon,
-    required Color iconBgColor,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required String amountOrStatus, // Changed from 'amount'
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: iconBgColor,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: iconColor, size: 24),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Color(0xFF4A2E2B)),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  subtitle,
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                ),
-              ],
-            ),
-          ),
-          Text(
-            amountOrStatus,
-            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF4A2E2B)),
-          ),
-        ],
-      ),
-    );
+  // Use the _buildHistorySection from the flutter_ui_realtime_history artifact
+  // Pass the FirestoreService instance to it.
+  Widget _buildHistorySection(BuildContext context, FirestoreService firestoreService) {
+    // This is where you'd integrate the content of _buildHistorySection
+    // from the flutter_ui_realtime_history artifact.
+    // For brevity, I'm calling the method from that artifact directly.
+    // Ensure that the dependencies (like ActivityItem, ProduceListing, etc.) are available.
+    return buildRealtimeHistorySection(context, _authService);
   }
 }
 
-// Simplified Custom Painter for the graph - remains unchanged for this update
-// In a real app, this could be fed data from FarmerStats
+// --- Placeholder Screens for Navigation ---
+class AllListingsScreen extends StatelessWidget {
+  const AllListingsScreen({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: Text('All Listings Screen', style: TextStyle(fontSize: 24)));
+  }
+}
+
+class NotificationsScreen extends StatelessWidget {
+  const NotificationsScreen({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: Text('Notifications Screen', style: TextStyle(fontSize: 24)));
+  }
+}
+
+class ProfileScreen extends StatelessWidget {
+  const ProfileScreen({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: Text('Profile Screen', style: TextStyle(fontSize: 24)));
+  }
+}
+
+// --- Graph Painter (Simplified) ---
 class SimplifiedGraphPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paintLine1 = Paint()
-      ..color = Colors.white.withOpacity(0.3)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-
-    final paintLine2 = Paint()
-      ..color = const Color(0xFFD95B5B).withOpacity(0.7)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5;
-
-    final paintPoint = Paint()
-      ..color = const Color(0xFFFFD700)
-      ..style = PaintingStyle.fill;
-
-    final paintVerticalLine = Paint()
-      ..color = const Color(0xFFFFD700).withOpacity(0.5)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    Path path1 = Path();
-    path1.moveTo(0, size.height * 0.6);
-    path1.quadraticBezierTo(size.width * 0.25, size.height * 0.4, size.width * 0.5, size.height * 0.65);
-    path1.quadraticBezierTo(size.width * 0.75, size.height * 0.9, size.width, size.height * 0.7);
+    final paintLine1 = Paint()..color = Colors.white.withOpacity(0.3)..style = PaintingStyle.stroke..strokeWidth = 2.0;
+    final paintLine2 = Paint()..color = const Color(0xFFD95B5B).withOpacity(0.7)..style = PaintingStyle.stroke..strokeWidth = 2.5;
+    final paintPoint = Paint()..color = const Color(0xFFFFD700)..style = PaintingStyle.fill;
+    final paintVerticalLine = Paint()..color = const Color(0xFFFFD700).withOpacity(0.5)..style = PaintingStyle.stroke..strokeWidth = 1.0;
+    Path path1 = Path()..moveTo(0, size.height * 0.6)..quadraticBezierTo(size.width * 0.25, size.height * 0.4, size.width * 0.5, size.height * 0.65)..quadraticBezierTo(size.width * 0.75, size.height * 0.9, size.width, size.height * 0.7);
     canvas.drawPath(path1, paintLine1);
-
-    Path path2 = Path();
-    path2.moveTo(0, size.height * 0.75);
-    path2.quadraticBezierTo(size.width * 0.3, size.height * 0.5, size.width * 0.6, size.height * 0.6);
-    path2.quadraticBezierTo(size.width * 0.85, size.height * 0.7, size.width, size.height * 0.4);
+    Path path2 = Path()..moveTo(0, size.height * 0.75)..quadraticBezierTo(size.width * 0.3, size.height * 0.5, size.width * 0.6, size.height * 0.6)..quadraticBezierTo(size.width * 0.85, size.height * 0.7, size.width, size.height * 0.4);
     canvas.drawPath(path2, paintLine2);
-
-    double pointX = size.width * (5.5 / 7.0);
+    double pointX = size.width * (DateTime.now().weekday / 7.0); // Approximate current day
     double pointY = size.height * 0.5;
-
     canvas.drawLine(Offset(pointX, pointY), Offset(pointX, size.height), paintVerticalLine);
     canvas.drawCircle(Offset(pointX, pointY), 5, paintPoint);
   }
-
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) {
-    return false;
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
+// --- Integration of _buildHistorySection from flutter_ui_realtime_history ---
+// This function is essentially the _buildHistorySection from your other artifact,
+// adapted to be callable here.
+Widget buildRealtimeHistorySection(BuildContext context, FirebaseAuthService authService) {
+  final ProduceListingService produceListingService = Provider.of<ProduceListingService>(context, listen: false);
+
+  return Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Row( // Keep the title consistent if desired
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Recent Activity',
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF4A2E2B)),
+            ),
+            // Removed "More" button for this integration, can be added back if needed
+          ],
+        ),
+        const SizedBox(height: 10),
+        StreamBuilder<List<ProduceListing>>(
+          stream: produceListingService.getFarmerProduceListings(authService.currentFirebaseUser!.uid),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              debugPrint("Error in RealtimeHistory StreamBuilder: ${snapshot.error}");
+              return Center(child: Text('Error: ${snapshot.error?.toString()}'));
+            }
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return const Center(child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text('No active produce listings found.'),
+              ));
+            }
+            final listings = snapshot.data!;
+            final List<ActivityItem> recentActivities = listings.map((listing) {
+              return ActivityItem( // Assuming ActivityItem and ProduceListing models are compatible
+                icon: listing.produceCategory.icon,
+                iconBgColor: listing.produceCategory.color.withOpacity(0.15),
+                iconColor: listing.produceCategory.color,
+                title: listing.produceName,
+                subtitle: "${listing.quantity.toStringAsFixed(1)} ${listing.unit} - ${listing.produceCategory.displayName}",
+                trailingText: "${listing.pricePerUnit.toStringAsFixed(2)} ${listing.currency}",
+              );
+            }).toList();
+            final itemCountToShow = math.min(recentActivities.length, 3);
+            if (itemCountToShow == 0) {
+              return const Center(child: Padding(
+                padding: EdgeInsets.all(16.0),
+                child: Text('No recent activity to display.'),
+              ));
+            }
+            return ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: itemCountToShow,
+              itemBuilder: (context, index) {
+                final activity = recentActivities[index];
+                return _buildActivityDisplayItem( // Using the local display item builder
+                  icon: activity.icon,
+                  iconBgColor: activity.iconBgColor,
+                  iconColor: activity.iconColor,
+                  title: activity.title,
+                  subtitle: activity.subtitle,
+                  amountOrStatus: activity.trailingText,
+                );
+              },
+            );
+          },
+        )
+      ],
+    ),
+  );
+}
+
+// Copied from flutter_ui_realtime_history artifact for completeness
+Widget _buildActivityDisplayItem({
+  required IconData icon,
+  required Color iconBgColor,
+  required Color iconColor,
+  required String title,
+  required String subtitle,
+  required String amountOrStatus,
+}) {
+  return Card(
+    margin: const EdgeInsets.symmetric(vertical: 4.0),
+    elevation: 1.0,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
+    child: ListTile(
+      leading: CircleAvatar(
+        backgroundColor: iconBgColor,
+        child: Icon(icon, color: iconColor, size: 24),
+      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15)),
+      subtitle: Text(subtitle, style: TextStyle(fontSize: 13, color: Colors.grey[700])),
+      trailing: Text(
+        amountOrStatus,
+        style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14, color: Color(0xFF4A2E2B)),
+      ),
+    ),
+  );
+}

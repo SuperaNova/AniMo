@@ -1,4 +1,5 @@
 import 'package:animo/features/farmer/screens/farmer_dashboard_overhaul.dart';
+import 'package:animo/features/farmer/screens/farmer_main.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:animo/core/models/app_user.dart'; // Your AppUser model
@@ -66,7 +67,7 @@ class AuthWrapper extends StatelessWidget {
           // User is logged in, determine their role and show the appropriate dashboard
           switch (appUser.role) {
             case UserRole.farmer:
-              return const NewFarmerDashboard();
+              return const FarmerMainScreen();
             case UserRole.buyer:
               return const BuyerDashboardScreen();
             case UserRole.driver:
