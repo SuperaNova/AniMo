@@ -216,46 +216,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> {
               )
             ]
         ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: const BoxDecoration(
-                color: Color(0xFFFFD700),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.lightbulb_outline, color: Color(0xFF4A2E2B), size: 28),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Match Suggestions',
-                    style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${stats.pendingMatchSuggestions} pending actions',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
-            ),
-          ],
-        ),
+        child: _buildMatchSuggestions(stats)
       ),
     );
   }
@@ -281,6 +242,73 @@ class SimplifiedGraphPainter extends CustomPainter {
   }
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+Widget _buildMatchSuggestions(FarmerStats stats) { // Added BuildContext for potential future use
+  // Define colors and icon based on pending actions
+  bool noPendingActions = stats.pendingMatchSuggestions <= 0;
+
+  Color iconBackgroundColor;
+  Color iconColor;
+  IconData iconData;
+  String message;
+
+  if (noPendingActions) {
+    iconBackgroundColor = Colors.green.shade600;
+    iconColor = Colors.white;
+    iconData = Icons.check_circle_outline;
+    message = 'No pending actions';
+  } else {
+    iconBackgroundColor = const Color(0xFFFFD700); // Default yellow
+    iconColor = const Color(0xFF4A2E2B);       // Default dark brown
+    iconData = Icons.lightbulb_outline;        // Default lightbulb icon
+    message = '${stats.pendingMatchSuggestions} pending actions';
+  }
+
+  return Row(
+    children: [
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration( // Use BoxDecoration for dynamic color
+          color: iconBackgroundColor, // Apply conditional background color
+          shape: BoxShape.circle,
+        ),
+        child: Icon(
+            iconData, // Apply conditional icon
+            color: iconColor,
+            size: 28
+        ),
+      ),
+      const SizedBox(width: 16),
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Match Suggestions',
+              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              message, // Display conditional message
+              style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+      ),
+      Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: Colors.white.withOpacity(0.2),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(Icons.arrow_forward_ios, color: Colors.white, size: 18),
+      ),
+    ],
+  );
 }
 
 // --- Realtime History Section Builder ---
