@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:animo/services/firebase_auth_service.dart';
 import 'package:animo/core/models/app_user.dart';
-// import 'package:animo/core/widgets/auth_wrapper.dart'; // AuthWrapper will be used after landing/login
+import 'package:animo/core/widgets/auth_wrapper.dart'; // Ensure AuthWrapper is imported
 import 'firebase_options.dart'; // Ensure this is uncommented and present
 import 'package:animo/features/auth/screens/login_screen.dart';
 import 'package:animo/features/auth/screens/landing_screen.dart'; // Import the new LandingScreen
@@ -50,11 +50,11 @@ class MyApp extends StatelessWidget {
           theme: customTheme.light(),
           darkTheme: customTheme.dark(),
           themeMode: ThemeMode.system,
-          home: const LandingScreen(), // Set LandingScreen as the initial screen
+          home: const AuthWrapper(), // Changed from LandingScreen to AuthWrapper
           routes: {
           '/login': (context) => const LoginScreen(),
-          '/register': (context) => const RegistrationScreen(), // Add route for registration
-          // '/': (context) => const LandingScreen(), // Optionally, define root route
+          '/register': (context) => const RegistrationScreen(),
+          '/landing': (context) => const LandingScreen(), // Keep landing if direct access is needed
           // Define other routes as needed
         },
       ),

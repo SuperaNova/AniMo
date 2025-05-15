@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:animo/core/models/app_user.dart';
-import 'package:animo/features/auth/screens/login_screen.dart'; // We'll create this next
+import 'package:animo/features/auth/screens/login_screen.dart';
+import 'package:animo/features/auth/screens/landing_screen.dart'; // Make sure LandingScreen is imported
 import 'package:animo/features/farmer/screens/farmer_dashboard_screen.dart';
 import 'package:animo/features/buyer/screens/buyer_dashboard_screen.dart';
 import 'package:animo/features/driver/screens/driver_dashboard_screen.dart';
@@ -16,9 +17,8 @@ class AuthWrapper extends StatelessWidget {
     final appUser = Provider.of<AppUser?>(context);
 
     if (appUser == null) {
-      // If user is not logged in, show LoginScreen
-      // We will create LoginScreen in the next steps. For now, it can be a placeholder.
-      return const LoginScreen(); // Assuming LoginScreen will be created
+      // If user is not logged in, show LandingScreen first
+      return const LandingScreen(); // Changed from LoginScreen
     } else {
       // If user is logged in, determine their role and show the appropriate dashboard
       switch (appUser.role) {

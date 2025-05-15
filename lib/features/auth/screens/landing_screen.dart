@@ -85,7 +85,7 @@ class LandingScreen extends StatelessWidget {
               children: <Widget>[
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF2C2C2C), // Dark button color from image
+                    backgroundColor: Theme.of(context).colorScheme.primary, // Dark button color from image
                     foregroundColor: Colors.white, // White text
                     padding: const EdgeInsets.symmetric(vertical: 16.0),
                     textStyle: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
