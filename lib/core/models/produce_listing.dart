@@ -5,17 +5,37 @@ import 'package:flutter/foundation.dart'; // For debugPrint
 // Helper class for GeoPoint-like structure
 // class LocationData { ... MOVED TO location_data.dart ... }
 
+import 'package:flutter/material.dart';
+
 enum ProduceCategory {
   vegetable('Vegetable'),
   fruit('Fruit'),
   herb('Herb'),
   grain('Grain'),
-  processed('Processed Farm Product'), // e.g. dried mangoes, jams
+  processed('Processed Farm Product'),
   other('Other');
 
   const ProduceCategory(this.displayName);
   final String displayName;
+
+  Color get color {
+    switch (this) {
+      case ProduceCategory.vegetable:
+        return Colors.green;
+      case ProduceCategory.fruit:
+        return Colors.red;
+      case ProduceCategory.herb:
+        return Colors.teal;
+      case ProduceCategory.grain:
+        return Colors.brown;
+      case ProduceCategory.processed:
+        return Colors.orange;
+      case ProduceCategory.other:
+        return Colors.grey;
+    }
+  }
 }
+
 
 enum ProduceListingStatus {
   available('Available'),
