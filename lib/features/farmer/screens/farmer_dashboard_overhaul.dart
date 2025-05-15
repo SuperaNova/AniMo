@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'dart:math' as math;
 
 import '../../../core/models/produce_listing.dart';
+import '../../../services/firebase_auth_service.dart';
 import '../../../services/firestore_service.dart';
 import 'add_edit_produce_listing_screen.dart';
 
@@ -127,6 +128,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   @override
   Widget build(BuildContext context) {
     // In a real app, user data (like profile image) might come from widget.stats or another service
+    final authService = Provider.of<FirebaseAuthService>(context, listen: false);
     final String profileImageUrl = 'https://placehold.co/100x100/orange/white?text=${widget.stats.farmerName.isNotEmpty ? widget.stats.farmerName[0].toUpperCase() : "U"}';
 
     return Scaffold(
@@ -164,7 +166,20 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // Action for adding new listing or other primary action
+          if (authService.currentFirebaseUser != null) {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => AddEditProduceListingScreen(
+                  farmerId: authService.currentFirebaseUser!.uid,
+                  farmerName: authService.currentFirebaseUser!.displayName,
+                ),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Error: User not found. Cannot add listing.'))
+            );
+          }
         },
         backgroundColor: const Color(0xFFD95B5B), // Accent Red
         shape: const CircleBorder(),
