@@ -10,7 +10,6 @@ import '../../../services/firestore_service.dart';
 import 'add_edit_produce_listing_screen.dart';
 import 'dashboard/dashboard_tab_content.dart';
 import 'listings/all_listings_tab_content.dart';
-import 'notifications/notifications_tab_content.dart';
 
 class FarmerMainScreen extends StatefulWidget {
   const FarmerMainScreen({super.key});
@@ -75,8 +74,6 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
         firebaseAuthService: _authService,
       ),
       const AllListingsTabContent(),
-      const NotificationsTabContent(),
-      const ProfileTabContent(),
     ];
   }
 
@@ -90,8 +87,6 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
     switch (index) {
       case 0: return 'Dashboard';
       case 1: return 'My Listings';
-      case 2: return 'Notifications';
-      case 3: return 'Profile';
       default: return 'Farmer Dashboard';
     }
   }
@@ -104,8 +99,6 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
     // Map UI index to screens list index (since FAB is not a screen)
     if (_selectedIndex == 0) currentScreen = screens[0];
     else if (_selectedIndex == 1) currentScreen = screens[1];
-    else if (_selectedIndex == 2) currentScreen = screens[2]; // UI index 2 maps to screens[2]
-    else if (_selectedIndex == 3) currentScreen = screens[3]; // UI index 3 maps to screens[3]
     else currentScreen = screens[0]; // Default
 
     final String profileImageUrl = _farmerStats != null && _farmerStats!.farmerName.isNotEmpty
@@ -123,13 +116,20 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
-            child: CircleAvatar(
+            child: GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const ProfileTabContent()),
+                );
+              },
+              child: CircleAvatar(
                 backgroundImage: NetworkImage(profileImageUrl),
                 onBackgroundImageError: (exception, stackTrace) {
                   if (kDebugMode) print('Error loading profile image: $exception');
                 },
                 radius: 20,
               ),
+            )
           ),
         ],
       ),
@@ -168,10 +168,8 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: <Widget>[
               _buildBottomNavItem(icon: Icons.dashboard_outlined, index: 0, label: "Dashboard"), // Changed icon
-              _buildBottomNavItem(icon: Icons.list_alt_outlined, index: 1, label: "Listings"),
               const SizedBox(width: 40), // Space for FAB
-              _buildBottomNavItem(icon: Icons.notifications_outlined, index: 2, label: "Alerts"),
-              _buildBottomNavItem(icon: Icons.person_outline, index: 3, label: "Profile"),
+              _buildBottomNavItem(icon: Icons.list_alt_outlined, index: 1, label: "Listings"),
             ],
           ),
         ),
