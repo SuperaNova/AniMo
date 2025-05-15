@@ -9,6 +9,7 @@ import 'package:animo/features/auth/screens/login_screen.dart';
 import 'package:animo/features/auth/screens/landing_screen.dart'; // Import the new LandingScreen
 import 'package:animo/features/auth/screens/registration_screen.dart'; // Ensure RegistrationScreen is available for routes if needed
 import 'package:animo/services/firestore_service.dart';
+import 'package:animo/theme/theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -29,6 +30,8 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final customTheme = MaterialTheme(ThemeData.light().textTheme); // Use default or customize
+
     return MultiProvider(
       providers: [
         Provider<FirebaseAuthService>(
@@ -44,13 +47,11 @@ class MyApp extends StatelessWidget {
       ],
       child: MaterialApp(
         title: 'AniMo',
-        theme: ThemeData(
-          primarySwatch: Colors.green,
-          visualDensity: VisualDensity.adaptivePlatformDensity,
-          // Consider adding a more complete theme later
-        ),
-        home: const LandingScreen(), // Set LandingScreen as the initial screen
-        routes: {
+          theme: customTheme.light(),
+          darkTheme: customTheme.dark(),
+          themeMode: ThemeMode.system,
+          home: const LandingScreen(), // Set LandingScreen as the initial screen
+          routes: {
           '/login': (context) => const LoginScreen(),
           '/register': (context) => const RegistrationScreen(), // Add route for registration
           // '/': (context) => const LandingScreen(), // Optionally, define root route

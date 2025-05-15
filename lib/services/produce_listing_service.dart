@@ -35,7 +35,7 @@ class ProduceListingService {
         .map((snapshot) {
       return snapshot.docs
           .map((doc) => ProduceListing.fromFirestore(
-              doc.data() as Map<String, dynamic>, doc.id))
+              doc.data(), doc.id))
           .toList();
     }).handleError((error) {
       print('Error fetching farmer produce listings: $error');

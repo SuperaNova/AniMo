@@ -188,7 +188,7 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
       // Fallback if _selectedPosition somehow wasn't set
       _updateAddressAtMapCenter(_currentCameraPosition!.target);
     }
-    print("Camera Idle at: ${_selectedPosition}");
+    print("Camera Idle at: $_selectedPosition");
   }
 
   void _confirmSelection() {
