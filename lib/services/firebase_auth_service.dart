@@ -6,22 +6,6 @@ class FirebaseAuthService {
   final fb_auth.FirebaseAuth _firebaseAuth = fb_auth.FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Set persistence for Android devices
-  Future<void> setPersistence(bool rememberMe) async {
-    try {
-      if (rememberMe) {
-        // LOCAL persistence keeps the user logged in across app restarts
-        await _firebaseAuth.setPersistence(fb_auth.Persistence.LOCAL);
-      } else {
-        // SESSION persistence will clear auth state when app is closed
-        await _firebaseAuth.setPersistence(fb_auth.Persistence.SESSION);
-      }
-    } catch (e) {
-      print("Error setting persistence: $e");
-      // Even if persistence setting fails, we can still proceed with sign in
-    }
-  }
-
   // Stream to listen to authentication state changes
   Stream<AppUser?> get authStateChanges {
     return _firebaseAuth.authStateChanges().asyncMap((fb_auth.User? firebaseUser) async {
@@ -131,12 +115,9 @@ class FirebaseAuthService {
   Future<AppUser?> signInWithEmailAndPassword({
     required String email,
     required String password,
-    bool rememberMe = false,
+    bool rememberMe = false, // rememberMe parameter is now effectively unused here for mobile
   }) async {
     try {
-      // Set persistence before signing in
-      await setPersistence(rememberMe);
-
       final fb_auth.UserCredential userCredential = await _firebaseAuth.signInWithEmailAndPassword(
         email: email,
         password: password,

@@ -11,7 +11,7 @@ class ProduceListingDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // Helper to build text rows for details
-    Widget _buildDetailRow(String label, String? value, {TextStyle? valueStyle}) {
+    Widget buildDetailRow(String label, String? value, {TextStyle? valueStyle}) {
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 4.0),
         child: Row(
@@ -78,27 +78,27 @@ class ProduceListingDetailScreen extends StatelessWidget {
                 child: Text(listing.description!, style: Theme.of(context).textTheme.bodyLarge),
               ),
             
-            _buildDetailRow('Category', category),
-            _buildDetailRow('Price', '${listing.pricePerUnit} ${listing.currency} per ${listing.unit}'),
-            _buildDetailRow('Available Quantity', '${listing.quantity.toStringAsFixed(1)} ${listing.unit}'),
-             _buildDetailRow('Status', availabilityStatus, valueStyle: TextStyle(color: listing.status == ProduceListingStatus.available && listing.quantity > 0 ? Colors.green.shade700 : Colors.orange.shade700)),
+            buildDetailRow('Category', category),
+            buildDetailRow('Price', '${listing.pricePerUnit} ${listing.currency} per ${listing.unit}'),
+            buildDetailRow('Available Quantity', '${listing.quantity.toStringAsFixed(1)} ${listing.unit}'),
+             buildDetailRow('Status', availabilityStatus, valueStyle: TextStyle(color: listing.status == ProduceListingStatus.available && listing.quantity > 0 ? Colors.green.shade700 : Colors.orange.shade700)),
             if (listing.estimatedWeightKgPerUnit != null)
-                _buildDetailRow('Est. Weight/Unit', '${listing.estimatedWeightKgPerUnit} kg'),
+                buildDetailRow('Est. Weight/Unit', '${listing.estimatedWeightKgPerUnit} kg'),
             
             const SizedBox(height: 16),
             Text('Farmer & Pickup Information', style: Theme.of(context).textTheme.titleLarge),
             const Divider(),
-            _buildDetailRow('Farmer', listing.farmerName ?? 'N/A'),
-            _buildDetailRow('Pickup Barangay', listing.pickupLocation.barangay),
-            _buildDetailRow('Pickup Municipality', listing.pickupLocation.municipality),
+            buildDetailRow('Farmer', listing.farmerName ?? 'N/A'),
+            buildDetailRow('Pickup Barangay', listing.pickupLocation.barangay),
+            buildDetailRow('Pickup Municipality', listing.pickupLocation.municipality),
             if (listing.pickupLocation.addressHint != null && listing.pickupLocation.addressHint!.isNotEmpty)
-              _buildDetailRow('Pickup Address Hint', listing.pickupLocation.addressHint),
+              buildDetailRow('Pickup Address Hint', listing.pickupLocation.addressHint),
             
             const SizedBox(height: 16),
             Text('Freshness Information', style: Theme.of(context).textTheme.titleLarge),
             const Divider(),
-            _buildDetailRow('Harvest Date', harvestInfo),
-            _buildDetailRow('Expiry Date', expiryInfo),
+            buildDetailRow('Harvest Date', harvestInfo),
+            buildDetailRow('Expiry Date', expiryInfo),
             
             const SizedBox(height: 24),
             Center(

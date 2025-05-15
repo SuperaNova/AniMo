@@ -27,7 +27,7 @@ class FirestoreService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
-            .map((doc) => ProduceListing.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
+            .map((doc) => ProduceListing.fromFirestore(doc.data(), doc.id))
             .toList());
   }
 
@@ -48,7 +48,7 @@ class FirestoreService {
         .orderBy('lastUpdated', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
-            .map((doc) => ProduceListing.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
+            .map((doc) => ProduceListing.fromFirestore(doc.data(), doc.id))
             .toList());
   }
 
@@ -108,7 +108,7 @@ class FirestoreService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
-            .map((doc) => MatchSuggestion.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
+            .map((doc) => MatchSuggestion.fromFirestore(doc.data(), doc.id))
             .toList());
   }
 
@@ -120,7 +120,7 @@ class FirestoreService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
-            .map((doc) => MatchSuggestion.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
+            .map((doc) => MatchSuggestion.fromFirestore(doc.data(), doc.id))
             .toList());
   }
 
@@ -146,7 +146,7 @@ class FirestoreService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
-            .map((doc) => app_order.Order.fromFirestore(doc.data() as Map<String, dynamic>, doc.id))
+            .map((doc) => app_order.Order.fromFirestore(doc.data(), doc.id))
             .toList());
   }
 

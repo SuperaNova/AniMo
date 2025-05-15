@@ -49,6 +49,9 @@ dependencies:
   google_maps_flutter: ^2.6.0
   geocoding: ^3.0.0
   geolocator: ^12.0.0
+  http: ^1.2.0  # Adding HTTP package for API requests
+  uuid: ^4.3.3  # Explicitly adding UUID package
+  connectivity_plus: ^5.0.2  # For checking network connectivity
 
   shared_preferences: ^2.2.3 # Restoring with a recent common version, adjust if needed
 
@@ -57,7 +60,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
+  flutter_launcher_icons: "^0.13.1"
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
   # activated in the `analysis_options.yaml` file located at the root of your
@@ -77,7 +80,8 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
+  assets:
+    - assets/ # This will include assets like assets/landing_bg.jpg
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg
 
@@ -106,3 +110,9 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+ # For the launcher icon
+flutter_launcher_icons:
+  android: true # Generate Android icons
+  ios: false     # Generate iOS icons (can be false if only targeting Android)
+  image_path: "assets/animo_logo.png" # Path to your master icon image
+  min_sdk_android: 21

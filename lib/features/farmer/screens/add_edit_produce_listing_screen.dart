@@ -409,18 +409,51 @@ class _AddEditProduceListingScreenState
                           setState(() {
                             _selectedPickupLatLng = result['latlng'] as LatLng?;
                             _selectedPickupAddressString = result['address'] as String?;
-                            // Optional: Try to parse and fill barangay/municipality from address string
-                            // This is complex and error-prone. For now, user manually confirms/edits fields.
-                            // Example of a simple attempt (might not be robust):
-                            // if (_selectedPickupAddressString != null) {
-                            //   var parts = _selectedPickupAddressString!.split(',');
-                            //   // This logic highly depends on the format of _selectedAddressString
-                            //   // and might need significant refinement.
-                            //   if (parts.length > 2) { 
-                            //      _barangayController.text = parts[parts.length - 3].trim(); // Example
-                            //      _municipalityController.text = parts[parts.length - 2].trim(); // Example
-                            //   }
-                            // }
+                            
+                            // Autofill municipality and barangay if available
+                            final String? municipality = result['municipality'] as String?;
+                            final String? barangay = result['barangay'] as String?;
+                            final String? street = result['street'] as String?;
+                            final String? placeName = result['placeName'] as String?;
+                            final String? fullAddress = result['address'] as String?;
+
+                            if (municipality != null) {
+                              _municipalityController.text = municipality;
+                            }
+                            if (barangay != null) {
+                              _barangayController.text = barangay;
+                            }
+                            
+                            // Extract detailed address information for Address Hint
+                            // Try to get everything before the barangay/municipality in the full address
+                            if (fullAddress != null && fullAddress.isNotEmpty) {
+                              String detailedAddress = fullAddress;
+                              
+                              // Remove municipality and following parts if present
+                              if (municipality != null && detailedAddress.contains(municipality)) {
+                                detailedAddress = detailedAddress.substring(0, detailedAddress.indexOf(municipality)).trim();
+                              }
+                              
+                              // Remove barangay and following parts if present
+                              if (barangay != null && detailedAddress.contains(barangay)) {
+                                detailedAddress = detailedAddress.substring(0, detailedAddress.indexOf(barangay)).trim();
+                              }
+                              
+                              // Clean up trailing commas, etc.
+                              detailedAddress = detailedAddress.replaceAll(RegExp(r',\s*$'), '').trim();
+                              
+                              if (detailedAddress.isNotEmpty) {
+                                _addressHintController.text = detailedAddress;
+                              } else if (street != null && street.isNotEmpty) {
+                                _addressHintController.text = street;
+                              } else if (placeName != null && placeName.isNotEmpty) {
+                                _addressHintController.text = placeName;
+                              }
+                            } else if (street != null && street.isNotEmpty) {
+                              _addressHintController.text = street;
+                            } else if (placeName != null && placeName.isNotEmpty) {
+                              _addressHintController.text = placeName;
+                            }
                           });
                         }
                       },
@@ -444,8 +477,8 @@ class _AddEditProduceListingScreenState
                     const SizedBox(height: 8),
                     TextFormField(
                         controller: _municipalityController,
-                        decoration: const InputDecoration(labelText: 'Municipality', border: OutlineInputBorder()),
-                        validator: (v) => v == null || v.isEmpty ? 'Municipality is required' : null,
+                        decoration: const InputDecoration(labelText: 'Municipality/City', border: OutlineInputBorder()),
+                        validator: (v) => v == null || v.isEmpty ? 'Municipality/City is required' : null,
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
