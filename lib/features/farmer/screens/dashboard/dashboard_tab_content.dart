@@ -11,6 +11,7 @@ import '../../../../core/models/produce_listing.dart';
 import '../../../../services/firestore_service.dart';
 import '../../../../services/produce_listing_service.dart';
 import '../common_widgets.dart';
+import '../match_requests_screen.dart';
 
 // This widget now holds the content previously in _StatisticsScreenState._buildDashboardContent
 class DashboardTabContent extends StatefulWidget {
@@ -56,7 +57,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> {
       child: Column(
         children: [
           _buildStatisticsCard(context, widget.farmerStats!),
-          _buildUpcomingPaymentsCard(context, widget.farmerStats!),
+          _buildMatchesPromptCard(context, widget.farmerStats!),
           // Use the shared buildRealtimeHistorySection, passing the service
           buildRealtimeHistorySection(context, widget.firebaseAuthService),
           const SizedBox(height: 80), // Space for FAB if content is long
@@ -200,24 +201,31 @@ class _DashboardTabContentState extends State<DashboardTabContent> {
     );
   }
 
-  Widget _buildUpcomingPaymentsCard(BuildContext context, FarmerStats stats) {
+  Widget _buildMatchesPromptCard(BuildContext context, FarmerStats stats) {
     return Padding(
       padding: const EdgeInsets.all(16.0),
-      child: Container(
-        padding: const EdgeInsets.all(20.0),
-        decoration: BoxDecoration(
-            color: const Color(0xFF8C524C),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 10,
-                offset: const Offset(0, 5),
-              )
-            ]
+      child: GestureDetector(
+        onTap: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (context) => const MatchRequestsScreen()),
+          );
+        },
+        child: Container(
+            padding: const EdgeInsets.all(20.0),
+            decoration: BoxDecoration(
+                color: const Color(0xFF8C524C),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 10,
+                    offset: const Offset(0, 5),
+                  )
+                ]
+            ),
+            child: _buildMatchSuggestions(stats)
         ),
-        child: _buildMatchSuggestions(stats)
-      ),
+      )
     );
   }
 }
