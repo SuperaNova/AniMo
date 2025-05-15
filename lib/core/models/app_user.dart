@@ -11,6 +11,7 @@ class AppUser {
   final UserRole role;
   final DateTime? registrationDate;
   final String? fcmToken;
+  final DateTime? updatedAt;
   // Add other common fields if needed, e.g., deviceToken for FCM
 
   AppUser({
@@ -22,6 +23,7 @@ class AppUser {
     required this.role,
     this.registrationDate,
     this.fcmToken,
+    this.updatedAt,
   });
 
   factory AppUser.fromFirestore(Map<String, dynamic> data, String id) {
@@ -37,6 +39,7 @@ class AppUser {
       ),
       registrationDate: (data['registrationDate'] as Timestamp?)?.toDate(),
       fcmToken: data['fcmToken'] as String?,
+      updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
     );
   }
 
@@ -49,6 +52,7 @@ class AppUser {
       'role': role.name,
       if (registrationDate != null) 'registrationDate': Timestamp.fromDate(registrationDate!),
       if (fcmToken != null) 'fcmToken': fcmToken,
+      if (updatedAt != null) 'updatedAt': Timestamp.fromDate(updatedAt!),
       // uid is not stored in the document fields itself, it's the document ID
     };
   }
@@ -62,6 +66,7 @@ class AppUser {
     UserRole? role,
     DateTime? registrationDate,
     String? fcmToken,
+    DateTime? updatedAt,
   }) {
     return AppUser(
       uid: uid ?? this.uid,
@@ -72,6 +77,7 @@ class AppUser {
       role: role ?? this.role,
       registrationDate: registrationDate ?? this.registrationDate,
       fcmToken: fcmToken ?? this.fcmToken,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 } 
