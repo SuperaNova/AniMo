@@ -12,7 +12,7 @@ class AppUser {
   final DateTime? registrationDate;
   final String? fcmToken;
   final DateTime? updatedAt;
-  // Add other common fields if needed, e.g., deviceToken for FCM
+  final Map<String, dynamic>? defaultDeliveryLocation;
 
   AppUser({
     required this.uid,
@@ -24,6 +24,7 @@ class AppUser {
     this.registrationDate,
     this.fcmToken,
     this.updatedAt,
+    this.defaultDeliveryLocation,
   });
 
   factory AppUser.fromFirestore(Map<String, dynamic> data, String id) {
@@ -40,6 +41,7 @@ class AppUser {
       registrationDate: (data['registrationDate'] as Timestamp?)?.toDate(),
       fcmToken: data['fcmToken'] as String?,
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
+      defaultDeliveryLocation: data['defaultDeliveryLocation'] as Map<String, dynamic>?,
     );
   }
 
@@ -53,7 +55,7 @@ class AppUser {
       if (registrationDate != null) 'registrationDate': Timestamp.fromDate(registrationDate!),
       if (fcmToken != null) 'fcmToken': fcmToken,
       if (updatedAt != null) 'updatedAt': Timestamp.fromDate(updatedAt!),
-      // uid is not stored in the document fields itself, it's the document ID
+      if (defaultDeliveryLocation != null) 'defaultDeliveryLocation': defaultDeliveryLocation,
     };
   }
 
@@ -67,6 +69,7 @@ class AppUser {
     DateTime? registrationDate,
     String? fcmToken,
     DateTime? updatedAt,
+    Map<String, dynamic>? defaultDeliveryLocation,
   }) {
     return AppUser(
       uid: uid ?? this.uid,
@@ -78,6 +81,7 @@ class AppUser {
       registrationDate: registrationDate ?? this.registrationDate,
       fcmToken: fcmToken ?? this.fcmToken,
       updatedAt: updatedAt ?? this.updatedAt,
+      defaultDeliveryLocation: defaultDeliveryLocation ?? this.defaultDeliveryLocation,
     );
   }
 } 

@@ -1,11 +1,10 @@
-import 'package:animo/features/farmer/screens/farmer_dashboard_overhaul.dart';
+import 'package:animo/features/buyer/screens/main_buyer_screen.dart';
+import 'package:animo/features/farmer/screens/farmer_main.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:animo/core/models/app_user.dart'; // Your AppUser model
 import 'package:animo/services/firebase_auth_service.dart'; // Your AuthService
 import 'package:animo/features/auth/screens/landing_screen.dart';
-import 'package:animo/features/farmer/screens/farmer_dashboard_screen.dart';
-import 'package:animo/features/buyer/screens/buyer_dashboard_screen.dart';
 import 'package:animo/features/driver/screens/driver_dashboard_screen.dart';
 
 class AuthWrapper extends StatelessWidget {
@@ -66,9 +65,9 @@ class AuthWrapper extends StatelessWidget {
           // User is logged in, determine their role and show the appropriate dashboard
           switch (appUser.role) {
             case UserRole.farmer:
-              return const NewFarmerDashboard();
+              return const FarmerMainScreen();
             case UserRole.buyer:
-              return const BuyerDashboardScreen();
+              return const MainBuyerScreen();
             case UserRole.driver:
               return const DriverDashboardScreen();
             case UserRole.unknown:

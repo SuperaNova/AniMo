@@ -155,6 +155,33 @@ class FirestoreService {
             .toList());
   }
 
+  Future<String> placeOrder(app_order.Order order) async {
+    if (currentUserId == null || currentUserId != order.buyerId) {
+      throw Exception('User not logged in or buyer ID mismatch.');
+    }
+    final docRef = _db.collection('orders').doc();
+    // Use server timestamp for createdAt and lastUpdated if they are meant to be set on write
+    // Assuming Order model's toFirestore handles this, or we adjust here.
+    // For now, assuming Order object is pre-populated with DateTime.now() for these.
+    // If Order's toFirestore expects FieldValue.serverTimestamp() for these, adjust there or here.
+    // The current Order model toFirestore method does not seem to handle server timestamps.
+    // Let's create a new order object with server timestamps for critical date fields.
+
+    final orderWithTimestamps = order.copyWith(
+      id: docRef.id,
+      createdAt: null, // Will be set by serverTimestamp in toFirestore logic if adapted
+      lastUpdated: null, // Will be set by serverTimestamp in toFirestore logic if adapted
+      // For now, we'll assume toFirestore needs to be adapted or we pass it explicitly
+    );
+    
+    Map<String, dynamic> orderData = orderWithTimestamps.toFirestore();
+    orderData['createdAt'] = FieldValue.serverTimestamp(); // Override if toFirestore doesn't do it
+    orderData['lastUpdated'] = FieldValue.serverTimestamp(); // Override if toFirestore doesn't do it
+    
+    await docRef.set(orderData);
+    return docRef.id;
+  }
+
   Future<FarmerStats> getFarmerStats() async {
     if (currentUserId == null) {
       throw Exception("User not logged in. Cannot fetch farmer stats.");
@@ -234,36 +261,6 @@ class FirestoreService {
     );
   }
 
-  Stream<List<ProduceListing>> getActiveListings(String farmerId) {
-    if (farmerId.isEmpty) {
-      // Return an empty stream or throw an error if farmerId is not available
-      debugPrint("Farmer ID is empty. Returning empty stream for active listings.");
-      return Stream.value([]);
-    }
-
-    try {
-      return _db
-          .collection('produceListings')
-          .where('farmerId', isEqualTo: farmerId)
-          .where('status', isEqualTo: ProduceListingStatus.available)
-          .orderBy('createdAt', descending: true)
-          .snapshots()
-          .map((snapshot) {
-        // Map each document snapshot to a ProduceListing object
-        return snapshot.docs
-            .map((doc) => ProduceListing.fromFirestore(doc.data as Map<String, dynamic>, doc.id))
-            .toList();
-      }).handleError((error) {
-        // Handle any errors during the stream processing
-        debugPrint("Error fetching active listings: $error");
-        return <ProduceListing>[]; // Return empty list on error
-      });
-    } catch (e) {
-      debugPrint("Exception in getActiveListings: $e");
-      return Stream.value([]); // Return an empty stream on exception
-    }
-  }
-
   // Helper to get AppUser data
   Future<AppUser?> getAppUser(String userId) async {
     final docSnap = await _db.collection('users').doc(userId).get();
@@ -271,6 +268,37 @@ class FirestoreService {
       return AppUser.fromFirestore(docSnap.data()!, docSnap.id);
     }
     return null;
+  }
+
+  // Method to update user's default delivery location
+  Future<void> updateUserDefaultDeliveryLocation(String userId, Map<String, dynamic> locationData) async {
+    if (userId.isEmpty) throw Exception('User ID cannot be empty.');
+    try {
+      await _db.collection('users').doc(userId).update({
+        'defaultDeliveryLocation': locationData,
+        'updatedAt': FieldValue.serverTimestamp(), // Also update the user doc's last update time
+      });
+    } catch (e) {
+      print("Error updating user delivery location: $e");
+      // Optionally rethrow or handle more gracefully
+      rethrow;
+    }
+  }
+
+  // Method to get user's default delivery location
+  Future<Map<String, dynamic>?> getUserDefaultDeliveryLocation(String userId) async {
+    if (userId.isEmpty) return null;
+    try {
+      final docSnap = await _db.collection('users').doc(userId).get();
+      if (docSnap.exists && docSnap.data() != null) {
+        final data = docSnap.data()!;
+        return data['defaultDeliveryLocation'] as Map<String, dynamic>?;
+      }
+      return null;
+    } catch (e) {
+      print("Error fetching user delivery location: $e");
+      return null;
+    }
   }
 
 } 
