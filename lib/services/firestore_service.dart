@@ -183,19 +183,15 @@ class FirestoreService {
   }
 
   Stream<List<app_order.Order>> getPickupOrdersForDriver() {
-    // No currentUserId check here, as drivers might see all available pickups initially,
-    // or this could be filtered further if drivers are assigned to specific zones/orders.
-    // For now, fetching orders that are generally ready for any driver.
     return _db
         .collection('orders')
-        .where('status', whereIn: [
+        .where('assignedDriverId', isEqualTo: null) // Only fetch orders not yet assigned
+        // .where('status', isEqualTo: app_order.OrderStatus.confirmed_by_platform.name) // Stricter: only platform confirmed
+        .where('status', whereIn: [ // More lenient: platform confirmed OR actively searching
           app_order.OrderStatus.confirmed_by_platform.name,
           app_order.OrderStatus.searching_for_driver.name,
-          // Could also include orders assigned to THIS driver if a 'assignedDriverId' field is reliably used
-          // For example, if currentUserId != null: .where('assignedDriverId', isEqualTo: currentUserId)
-          // But that would require combining queries or adjusting logic if a driver sees both general and assigned.
         ])
-        .orderBy('createdAt', descending: true) // Show newer orders first
+        .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs
             .map((doc) => app_order.Order.fromFirestore(doc.data(), doc.id))
@@ -397,5 +393,52 @@ class FirestoreService {
     // Example: Add a new OrderStatusUpdate object to the statusHistory array.
     // This might require fetching the order first, adding to the list, then updating, or using FieldValue.arrayUnion.
     // For simplicity, direct status update is done. Status history can be a more advanced feature or handled by backend triggers.
+  }
+
+  // Method for driver to accept a pickup order
+  Future<void> acceptOrderForDriver(String orderId, String driverId) async {
+    if (currentUserId == null || currentUserId != driverId) {
+      throw Exception("User not authorized or not logged in to accept this order.");
+    }
+
+    final orderRef = _db.collection('orders').doc(orderId);
+
+    // Check current status to prevent re-accepting or accepting an invalid order
+    final orderSnapshot = await orderRef.get();
+    if (!orderSnapshot.exists) {
+      throw Exception("Order not found.");
+    }
+    final currentStatus = app_order.orderStatusFromString(orderSnapshot.data()?['status'] as String?);
+    final alreadyAssignedDriver = orderSnapshot.data()?['assignedDriverId'] as String?;
+
+    if (alreadyAssignedDriver != null && alreadyAssignedDriver.isNotEmpty) {
+         if (alreadyAssignedDriver == driverId) {
+            throw Exception("You have already accepted this order.");
+         } else {
+            throw Exception("Order has already been taken by another driver.");
+         }
+    }
+    
+    // Only allow acceptance if it's in a state ready for pickup by a driver
+    if (currentStatus != app_order.OrderStatus.confirmed_by_platform && 
+        currentStatus != app_order.OrderStatus.searching_for_driver) {
+      throw Exception("Order is not in a state to be accepted (current: ${currentStatus.displayName}).");
+    }
+
+    Map<String, dynamic> updateData = {
+      'status': app_order.OrderStatus.driver_assigned.name,
+      'assignedDriverId': driverId,
+      'lastUpdated': FieldValue.serverTimestamp(),
+      // 'statusHistory': FieldValue.arrayUnion([ // Example if adding to status history
+      //   app_order.OrderStatusUpdate(
+      //     status: app_order.OrderStatus.driver_assigned,
+      //     updatedAt: Timestamp.now(), // Or server timestamp if possible through a more complex update
+      //     updatedBy: driverId,
+      //     notes: 'Order accepted by driver.'
+      //   ).toMap(),
+      // ]),
+    };
+
+    await orderRef.update(updateData);
   }
 } 

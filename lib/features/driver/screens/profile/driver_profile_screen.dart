@@ -4,6 +4,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:animo/services/firebase_auth_service.dart';
 import 'package:animo/core/models/app_user.dart'; // For AppUser model, if needed for more details
 import 'package:animo/services/firestore_service.dart'; // To fetch AppUser
+// Import for LandingScreen is not strictly needed if using a named string route like '/'
+// However, if you had LandingScreen.routeName, it would be: 
+// import 'package:animo/features/auth/screens/landing_screen.dart'; 
 
 class DriverProfileScreen extends StatefulWidget {
   static const String routeName = '/driver-profile';
@@ -70,11 +73,21 @@ class _DriverProfileScreenState extends State<DriverProfileScreen> {
                   leading: const Icon(Icons.exit_to_app, color: Colors.red),
                   title: const Text('Sign Out', style: TextStyle(color: Colors.red)),
                   onTap: () async {
-                    Navigator.of(context).pop(); // Close bottom sheet
-                    await authService.signOut();
-                    // Navigation after logout will likely be handled by an auth wrapper/listener
-                    // For now, can pop or navigate to a root/login screen if needed directly
-                    // Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+                    Navigator.of(context).pop(); // Close the bottom sheet first
+                    try {
+                        await authService.signOut();
+                        if (context.mounted) {
+                           // Navigate to LandingScreen (assuming its route is '/')
+                           Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                        }
+                    } catch (e) {
+                        if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text("Error signing out: ${e.toString()}")),
+                            );
+                        }
+                        debugPrint("Error during sign out: $e");
+                    }
                   },
                 ),
                 ListTile(

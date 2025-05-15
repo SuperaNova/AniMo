@@ -167,7 +167,6 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     final defaultCameraPosition = const CameraPosition(target: _defaultInitialPosition, zoom: 7.0);
     setState(() {
       _locationError = errorMessage;
-      // _isLoadingLocation = false; // This is now handled in finally of _fetchAndSetCurrentLocation
       _currentCameraPosition = defaultCameraPosition;
     });
     if (_mapController != null) {
@@ -179,27 +178,29 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     if (!mounted) return;
     final Set<Marker> newMarkers = {};
 
-    // Add/Update current location marker (if it exists and has a position)
+    // 1. Add/Update current location marker
     final existingCurrentLocationMarker = _markers.firstWhere((m) => m.markerId == _currentLocationMarkerId, orElse: () => const Marker(markerId: MarkerId('none'))); 
     if (existingCurrentLocationMarker.markerId != const MarkerId('none')){
-        newMarkers.add(existingCurrentLocationMarker);
-    }
+        newMarkers.add(existingCurrentLocationMarker); // Keep the existing one if it has valid position
+    } // _updateCurrentLocationMarker handles adding/updating this marker separately and calls setState.
+      // So, we rely on _markers already containing the latest current location marker.
 
-    // Add order markers
+    // 2. Add markers for general pickup orders (Azure)
     for (final order in _pickupOrders) {
-      if (order.id != null && order.pickupLocation.latitude != 0.0 && order.pickupLocation.longitude != 0.0) {
-        // Logic to check if this order is already in _driverActiveOrders
-        // bool isActiveForThisDriver = _driverActiveOrders.any((activeOrder) => activeOrder.id == order.id);
-        // if (isActiveForThisDriver) continue; // Skip adding marker if it's in the bottom sheet already
+      // Ensure this order is NOT in the driver's active orders list to avoid duplicate markers
+      // if there's any overlap or delay in stream updates.
+      bool isAlreadyActiveForThisDriver = _driverActiveOrders.any((activeOrder) => activeOrder.id == order.id);
+      if (isAlreadyActiveForThisDriver) continue; 
 
+      if (order.id != null && order.pickupLocation.latitude != 0.0 && order.pickupLocation.longitude != 0.0) {
         newMarkers.add(
           Marker(
-            markerId: MarkerId('order_${order.id}'),
+            markerId: MarkerId('pickup_${order.id}'), // Prefix to differentiate
             position: LatLng(order.pickupLocation.latitude, order.pickupLocation.longitude),
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure), // Different color for orders
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
             infoWindow: InfoWindow(
-              title: 'Pickup: ${order.produceName}',
-              snippet: 'Tap for details (General Pickup)',
+              title: 'Available Pickup: ${order.produceName}',
+              snippet: 'Tap for details',
             ),
             onTap: () {
               Navigator.of(context).push(
@@ -210,9 +211,36 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         );
       }
     }
+
+    // 3. Add markers for the current driver's active orders (Green) - at their PICKUP location
+    for (final order in _driverActiveOrders) {
+      if (order.id != null && order.pickupLocation.latitude != 0.0 && order.pickupLocation.longitude != 0.0) {
+        newMarkers.add(
+          Marker(
+            markerId: MarkerId('active_${order.id}'), // Prefix to differentiate
+            position: LatLng(order.pickupLocation.latitude, order.pickupLocation.longitude),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+            infoWindow: InfoWindow(
+              title: 'Your Active Order: ${order.produceName}',
+              snippet: 'Status: ${order.status.displayName}. Tap for details.',
+            ),
+            onTap: () {
+              // Navigate to the active order detail screen which has "Confirm Delivered"
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => DriverActiveOrderDetailScreen(order: order)),
+              );
+            },
+          ),
+        );
+      }
+    }
+
     setState(() {
-      _markers.clear();
-      _markers.addAll(newMarkers);
+      // _markers.clear(); // Clearing and adding all can cause flicker if not careful with current location
+      // _markers.addAll(newMarkers); 
+      // More controlled update: Replace all non-current-location markers
+      _markers.removeWhere((m) => m.markerId != _currentLocationMarkerId);
+      _markers.addAll(newMarkers.where((m) => m.markerId != _currentLocationMarkerId));
     });
   }
 
@@ -246,7 +274,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         automaticallyImplyLeading: false,
         title: const Text(
           "Driver Dashboard", 
-          style: TextStyle(fontSize: 18.0, color: appBarForegroundColor), // Ensure title color is set
+          style: TextStyle(fontWeight:  FontWeight.bold, fontSize: 18.0, color: appBarForegroundColor), // Ensure title color is set
         ),
         centerTitle: true,
         actions: [
