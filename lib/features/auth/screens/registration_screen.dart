@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:animo/core/models/app_user.dart';// Assuming AppUser and UserRole are here
 import '../../../services/firebase_auth_service.dart';
+// import 'package:animo/core/constants/app_colors.dart'; // Removing AppColors import
 // import '../../widgets/loading_dialog.dart'; // Will create this later if needed, or use a simple CircularProgressIndicator
 // import 'login_screen.dart'; // For navigation if needed
 
@@ -90,8 +91,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // backgroundColor: AppColors.primary, // Removing background color override
       appBar: AppBar(
         title: const Text('Register for AniMo'),
+        // Optional: Match AppBar color or make it transparent
+        // backgroundColor: AppColors.primary, // Or Colors.transparent to blend
+        // elevation: 0, // If transparent
       ),
       body: Center(
         child: SingleChildScrollView(

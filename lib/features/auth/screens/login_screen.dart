@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:animo/services/firebase_auth_service.dart';
 import 'package:animo/features/auth/screens/registration_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
+// import 'package:animo/core/constants/app_colors.dart'; // Removing AppColors import
 // Import RegistrationScreen for navigation (will create this file next)
 // import 'registration_screen.dart'; 
 
@@ -67,6 +68,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      // backgroundColor: AppColors.primary, // Removing background color override
       appBar: AppBar(
         title: const Text("Login to AniMo"),
         centerTitle: true,
