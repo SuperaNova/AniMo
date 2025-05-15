@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:animo/services/firebase_auth_service.dart'; // Will use for logout
-import 'package:provider/provider.dart'; // Example if using Provider
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:provider/provider.dart'; // Example if using Provider
 import 'package:animo/core/models/order.dart'; // Assuming your Order model is here
 import 'package:cloud_firestore/cloud_firestore.dart' as firestore;
 import 'package:geolocator/geolocator.dart'; // For location services
-// geocoding is no longer needed if we don't display the address
-// import 'package:geocoding/geocoding.dart' as geocoding;
 
 // It's assumed that your Order, LocationInfo, and OrderStatus (if used as an enum)
 // are defined in 'package:animo/core/models/order.dart' or other relevant files.
@@ -29,16 +27,14 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   Set<Marker> _markers = {};
   bool _isLoadingLocation = true;
   String? _locationError;
-  // _selectedAddressText and _isFetchingAddress are no longer needed
-  // String _selectedAddressText = "Move the map to select a location...";
-  // bool _isFetchingAddress = false;
 
   final MarkerId _selectedLocationMarkerId = const MarkerId('selectedLocation');
 
   @override
   void initState() {
     super.initState();
-    _fetchAndSetCurrentLocation();
+    // Fetch current location without animation for initial setup
+    _fetchAndSetCurrentLocation(animate: false);
   }
 
   // --- Location Fetching ---
@@ -47,14 +43,13 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     setState(() {
       _isLoadingLocation = true;
       _locationError = null;
-      // _selectedAddressText = "Fetching your location's address..."; // No longer needed
     });
 
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         _handleLocationError('Location services are disabled. Please enable them in your device settings.');
-        _updateMapMarker(_defaultInitialPosition); // Just update marker
+        _updateMapMarker(_defaultInitialPosition);
         return;
       }
 
@@ -63,14 +58,14 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
           _handleLocationError('Location permissions are denied. Please grant permission in app settings.');
-          _updateMapMarker(_defaultInitialPosition); // Just update marker
+          _updateMapMarker(_defaultInitialPosition);
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
         _handleLocationError('Location permissions are permanently denied. Please enable them in app settings.');
-        _updateMapMarker(_defaultInitialPosition); // Just update marker
+        _updateMapMarker(_defaultInitialPosition);
         return;
       }
 
@@ -82,15 +77,19 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       final currentLatLng = LatLng(position.latitude, position.longitude);
       _currentCameraPosition = CameraPosition(target: currentLatLng, zoom: 15.0);
 
-      if (animate && _mapController != null) {
-        _mapController!
-            .animateCamera(CameraUpdate.newCameraPosition(_currentCameraPosition));
-      } else if (_mapController != null) {
-        _mapController!
-            .moveCamera(CameraUpdate.newCameraPosition(_currentCameraPosition));
+      if (_mapController != null) {
+        if (animate) {
+          _mapController!
+              .animateCamera(CameraUpdate.newCameraPosition(_currentCameraPosition));
+        } else {
+          _mapController!
+              .moveCamera(CameraUpdate.newCameraPosition(_currentCameraPosition));
+        }
       }
+      // If _mapController is null, GoogleMap will use the updated _currentCameraPosition
+      // for its initialCameraPosition or onMapCreated will handle it.
 
-      _updateMapMarker(currentLatLng); // Just update marker
+      _updateMapMarker(currentLatLng);
       if(mounted){
         setState(() {
           _isLoadingLocation = false;
@@ -101,24 +100,27 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     } catch (e) {
       if (!mounted) return;
       _handleLocationError("Cannot fetch current location: ${e.toString()}. Showing default location.");
-      _updateMapMarker(_defaultInitialPosition); // Just update marker
+      _updateMapMarker(_defaultInitialPosition); // Ensure marker is at default on error
     }
   }
 
   void _handleLocationError(String errorMessage) {
     if (!mounted) return;
+    final defaultCameraPosition = const CameraPosition(target: _defaultInitialPosition, zoom: 7.0);
     setState(() {
       _locationError = errorMessage;
       _isLoadingLocation = false;
-      _currentCameraPosition = const CameraPosition(target: _defaultInitialPosition, zoom: 7);
-      if (_markers.isEmpty) {
-        _updateMapMarker(_defaultInitialPosition); // Update to default marker
-      }
-      // _selectedAddressText = "Could not determine current location."; // No longer needed
+      _currentCameraPosition = defaultCameraPosition;
     });
+
+    // If the map is already created, move it to the default error position
+    if (_mapController != null) {
+      _mapController!.moveCamera(CameraUpdate.newCameraPosition(defaultCameraPosition));
+    }
+    // The marker is typically updated by the caller (_fetchAndSetCurrentLocation's catch block)
+    // by calling _updateMapMarker(_defaultInitialPosition).
   }
 
-  // Simplified method to only update the map marker
   void _updateMapMarker(LatLng coordinates) {
     if (!mounted) return;
     setState(() {
@@ -127,13 +129,11 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
           markerId: _selectedLocationMarkerId,
           position: coordinates,
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-          infoWindow: const InfoWindow(title: "Selected Location"),
+          infoWindow: const InfoWindow(title: "Selected Location"), // Or "Current Location" / "Map Center"
         )
       };
     });
   }
-  // _updateAddressForCoordinates is no longer needed as we don't display the address.
-
 
   @override
   Widget build(BuildContext context) {
@@ -165,7 +165,6 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       ),
       body: Column(
         children: [
-          // Map Section (approx 2/3 height)
           Expanded(
             flex: 2,
             child: Stack(
@@ -173,7 +172,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                 SizedBox(
                   height: double.infinity,
                   width: double.infinity,
-                  child: _isLoadingLocation && _markers.isEmpty
+                  child: _isLoadingLocation && _markers.isEmpty // Show loading only if truly initial and no marker yet
                       ? const Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -184,8 +183,8 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                       ],
                     ),
                   )
-                      : _locationError != null && _markers.isNotEmpty && _markers.first.markerId == _selectedLocationMarkerId && _markers.first.position == _defaultInitialPosition
-                      ? Center(
+                      : _locationError != null
+                      ? Center( // Error display
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Column(
@@ -208,20 +207,30 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                       ),
                     ),
                   )
-                      : GoogleMap(
-                    initialCameraPosition: _currentCameraPosition,
+                      : GoogleMap( // Display map
+                    initialCameraPosition: _currentCameraPosition, // Uses latest known position
                     onMapCreated: (GoogleMapController controller) {
                       _mapController = controller;
+                      // If location was fetched before map created and is valid, ensure camera is there.
                       if (!_isLoadingLocation && _locationError == null) {
                         _mapController?.moveCamera(
                             CameraUpdate.newCameraPosition(_currentCameraPosition));
+                      } else if (_locationError != null) {
+                        // If an error occurred before map creation, _currentCameraPosition is default.
+                        // Ensure map reflects this.
+                        _mapController?.moveCamera(
+                            CameraUpdate.newCameraPosition(_currentCameraPosition));
                       }
-                      _updateMapMarker(_currentCameraPosition.target); // Update marker for initial position
+                      // Ensure marker is updated to reflect the map's current state.
+                      _updateMapMarker(_currentCameraPosition.target);
                     },
                     onCameraMove: (CameraPosition position) {
-                      _currentCameraPosition = position;
+                      // _currentCameraPosition = position; // Only update if you want the marker to follow pan
                     },
                     onCameraIdle: () async {
+                      // This logic moves the single marker to the center of the map
+                      // when the user stops panning. You might want to reconsider
+                      // this if the marker should *only* represent the fetched GPS location.
                       if (_mapController != null) {
                         LatLng newCenter;
                         double currentZoom;
@@ -233,23 +242,22 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                           );
                           currentZoom = await _mapController!.getZoomLevel();
                         } catch (e) {
+                          // Fallback to the last known camera position's target if getVisibleRegion fails
                           newCenter = _currentCameraPosition.target;
                           currentZoom = _currentCameraPosition.zoom;
                         }
+                        // Update _currentCameraPosition to reflect the new map center
                         _currentCameraPosition = CameraPosition(target: newCenter, zoom: currentZoom);
                         _updateMapMarker(newCenter); // Update marker based on new center
                       }
                     },
-                    myLocationEnabled: true,
-                    myLocationButtonEnabled: false,
+                    myLocationEnabled: true, // Shows the blue dot for user's location
+                    myLocationButtonEnabled: false, // Hides the default "my location" button
                     markers: _markers,
                     zoomControlsEnabled: false,
                   ),
                 ),
-                // Address Display Bar has been REMOVED
-                // Custom "My Location" Button
                 Positioned(
-                  // Adjusted bottom position since address bar is gone
                   bottom: 20,
                   right: 16,
                   child: Material(
@@ -259,6 +267,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
                     child: InkWell(
                       borderRadius: BorderRadius.circular(8),
                       onTap: () {
+                        // Fetch current location and animate map to it
                         _fetchAndSetCurrentLocation(animate: true);
                       },
                       child: Container(
@@ -275,7 +284,6 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
               ],
             ),
           ),
-          // Orders List Section (approx 1/3 height)
           Expanded(
             flex: 1,
             child: StreamBuilder<firestore.QuerySnapshot>(
