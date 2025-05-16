@@ -89,7 +89,7 @@ class AuthWrapper extends StatelessWidget {
                       const SizedBox(height: 20),
                       ElevatedButton(
                         onPressed: () {
-                          // Attempt to logout the user
+                          // Attempt to log out the user
                           authService.signOut();
                         },
                         child: const Text("Logout and Try Again"),
