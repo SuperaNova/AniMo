@@ -175,131 +175,135 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                         color: sheetBackgroundColor,
                         borderRadius: const BorderRadius.vertical(top: Radius.circular(30.0)),
                         elevation: 8.0,
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.fromLTRB(32.0, 32.0, 32.0, 0), // Adjust bottom padding here
-                          child: Form(
-                            key: _formKey,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: <Widget>[
-                                TextFormField(
-                                  controller: _emailController,
-                                  style: TextStyle(color: _darkTextColor),
-                                  decoration: InputDecoration(
-                                    hintText: 'Email',
-                                    hintStyle: TextStyle(color: _hintTextColor),
-                                    filled: true,
-                                    fillColor: fieldFillColor,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(fieldBorderRadius),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
-                                  ),
-                                  keyboardType: TextInputType.emailAddress,
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) return 'Please enter your email';
-                                    if (!RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(value)) {
-                                      return 'Please enter a valid email address';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 20),
-                                TextFormField(
-                                  controller: _passwordController,
-                                  style: TextStyle(color: _darkTextColor),
-                                  decoration: InputDecoration(
-                                    hintText: 'Password',
-                                    hintStyle: TextStyle(color: _hintTextColor),
-                                    filled: true,
-                                    fillColor: fieldFillColor,
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(fieldBorderRadius),
-                                      borderSide: BorderSide.none,
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
-                                    suffixIcon: IconButton(
-                                      icon: Icon(
-                                        _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                                        color: _hintTextColor,
+                        child: AutofillGroup( // Wrap your form fields in an AutofillGroup
+                            child: SingleChildScrollView(
+                              padding: const EdgeInsets.fromLTRB(32.0, 32.0, 32.0, 0),
+                              child: Form(
+                                key: _formKey,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                                  children: <Widget>[
+                                    TextFormField(
+                                      controller: _emailController,
+                                      style: TextStyle(color: _darkTextColor),
+                                      decoration: InputDecoration(
+                                        hintText: 'Email',
+                                        hintStyle: TextStyle(color: _hintTextColor),
+                                        filled: true,
+                                        fillColor: fieldFillColor,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(fieldBorderRadius),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
                                       ),
-                                      onPressed: () {
-                                        if (mounted) {
-                                          setState(() {
-                                            _isPasswordVisible = !_isPasswordVisible;
-                                          });
+                                      keyboardType: TextInputType.emailAddress,
+                                      autofillHints: const [AutofillHints.email, AutofillHints.username], // Added email and username autofill hints
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) return 'Please enter your email';
+                                        if (!RegExp(r"^[a-zA-Z0-9.a-zA-Z0-9.!#$%&'*+-/=?^_`{|}~]+@[a-zA-Z0-9]+\.[a-zA-Z]+").hasMatch(value)) {
+                                          return 'Please enter a valid email address';
                                         }
+                                        return null;
                                       },
+                                      onChanged: (_) => setState((){}), // To update button active state
                                     ),
-                                  ),
-                                  obscureText: !_isPasswordVisible,
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) return 'Please enter your password';
-                                    if (value.length < 6) return 'Password must be at least 6 characters';
-                                    return null;
-                                  },
-                                ),
-                                const SizedBox(height: 20),
-                                Row(
-                                  children: [
-                                    Checkbox(
-                                      value: _rememberMe,
-                                      onChanged: (bool? value) {
-                                        if (mounted) {
-                                          setState(() {
-                                            _rememberMe = value ?? false;
-                                          });
-                                        }
+                                    const SizedBox(height: 20),
+                                    TextFormField(
+                                      controller: _passwordController,
+                                      style: TextStyle(color: _darkTextColor),
+                                      decoration: InputDecoration(
+                                        hintText: 'Password',
+                                        hintStyle: TextStyle(color: _hintTextColor),
+                                        filled: true,
+                                        fillColor: fieldFillColor,
+                                        border: OutlineInputBorder(
+                                          borderRadius: BorderRadius.circular(fieldBorderRadius),
+                                          borderSide: BorderSide.none,
+                                        ),
+                                        contentPadding: const EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+                                        suffixIcon: IconButton(
+                                          icon: Icon(
+                                            _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                                            color: _hintTextColor,
+                                          ),
+                                          onPressed: () {
+                                            if (mounted) {
+                                              setState(() {
+                                                _isPasswordVisible = !_isPasswordVisible;
+                                              });
+                                            }
+                                          },
+                                        ),
+                                      ),
+                                      obscureText: !_isPasswordVisible,
+                                      autofillHints: const [AutofillHints.password], // Added password autofill hint
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) return 'Please enter your password';
+                                        if (value.length < 6) return 'Password must be at least 6 characters';
+                                        return null;
                                       },
-                                      activeColor: activeLoginButtonColor,
-                                      checkColor: sheetBackgroundColor,
-                                      side: BorderSide(color: _hintTextColor),
+                                      onChanged: (_) => setState((){}), // To update button active state
                                     ),
-                                    Text(
-                                      'Remember me',
-                                      style: TextStyle(color: _darkTextColor.withOpacity(0.8), fontSize: 14),
+                                    const SizedBox(height: 20),
+                                    Row(
+                                      children: [
+                                        Checkbox(
+                                          value: _rememberMe,
+                                          onChanged: (bool? value) {
+                                            if (mounted) {
+                                              setState(() {
+                                                _rememberMe = value ?? false;
+                                              });
+                                            }
+                                          },
+                                          activeColor: activeLoginButtonColor,
+                                          checkColor: sheetBackgroundColor,
+                                          side: BorderSide(color: _hintTextColor),
+                                        ),
+                                        Text(
+                                          'Remember me',
+                                          style: TextStyle(color: _darkTextColor.withOpacity(0.8), fontSize: 14),
+                                        ),
+                                      ],
                                     ),
+                                    const SizedBox(height: 25),
+                                    _isLoading
+                                        ? Center(child: Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 16.0),
+                                      child: CircularProgressIndicator(color: activeLoginButtonColor),
+                                    ))
+                                        : ElevatedButton(
+                                      onPressed: _isLoginButtonActive ? _loginUser : null,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: _isLoginButtonActive ? activeLoginButtonColor : neutralLoginButtonColor,
+                                        foregroundColor: _isLoginButtonActive ? (activeLoginButtonColor.computeLuminance() > 0.5 ? Colors.black : Colors.white) : Colors.white70,
+                                        padding: const EdgeInsets.symmetric(vertical: 18.0),
+                                        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(30),
+                                        ),
+                                        disabledBackgroundColor: neutralLoginButtonColor.withOpacity(0.7),
+                                      ),
+                                      child: const Text("Login"),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    if (_errorMessage != null && _errorMessage!.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
+                                        child: Text(
+                                          _errorMessage!,
+                                          style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 14),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 20),
                                   ],
                                 ),
-                                const SizedBox(height: 25),
-                                _isLoading
-                                    ? Center(child: Padding(
-                                  padding: const EdgeInsets.symmetric(vertical: 16.0),
-                                  child: CircularProgressIndicator(color: activeLoginButtonColor),
-                                ))
-                                    : ElevatedButton(
-                                  onPressed: _isLoginButtonActive ? _loginUser : null,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _isLoginButtonActive ? activeLoginButtonColor : neutralLoginButtonColor,
-                                    foregroundColor: _isLoginButtonActive ? (activeLoginButtonColor.computeLuminance() > 0.5 ? Colors.black : Colors.white) : Colors.white70,
-                                    padding: const EdgeInsets.symmetric(vertical: 18.0),
-                                    textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(30),
-                                    ),
-                                    disabledBackgroundColor: neutralLoginButtonColor.withOpacity(0.7),
-                                  ),
-                                  child: const Text("Login"),
-                                ),
-                                const SizedBox(height: 12),
-                                if (_errorMessage != null && _errorMessage!.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8.0, bottom: 8.0),
-                                    child: Text(
-                                      _errorMessage!,
-                                      style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 14),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                // This SizedBox helps push content up when keyboard appears
-                                // It's inside the SingleChildScrollView, so it adds to scrollable content
-                                SizedBox(height: MediaQuery.of(context).viewInsets.bottom + 20),
-                              ],
+                              ),
                             ),
                           ),
-                        ),
                       ),
                     ),
                   ),
