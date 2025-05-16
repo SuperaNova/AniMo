@@ -56,8 +56,8 @@ class _MainBuyerScreenState extends State<MainBuyerScreen> {
 
     const Color darkBrownHeaderColor = Color(0xFF4A2E2B);
 
-    // AppBar colors now depend on whether index 0 OR 1 is selected
-    bool isDarkHeaderTabActive = _selectedIndex == 0 || _selectedIndex == 1;
+    // AppBar colors now depend on whether index 0, 1, OR 2 is selected
+    bool isDarkHeaderTabActive = _selectedIndex == 0 || _selectedIndex == 1 || _selectedIndex == 2;
     Color appBarBackgroundColor = isDarkHeaderTabActive ? darkBrownHeaderColor : colorScheme.surface;
     Color appBarForegroundColor = isDarkHeaderTabActive ? Colors.white : colorScheme.onSurface;
     Brightness statusBarIconBrightness = isDarkHeaderTabActive ? Brightness.light : Brightness.dark;
@@ -129,6 +129,19 @@ class _MainBuyerScreenState extends State<MainBuyerScreen> {
   Widget _buildNavItem(IconData icon, String label, int index) {
     final bool isSelected = _selectedIndex == index;
     final colorScheme = Theme.of(context).colorScheme;
+    const Color notificationTabColor = Color(0xFF4A2E2B);
+
+    Color itemColor;
+    if (isSelected) {
+      if (index == 2) { // Index 2 is for 'Alerts' (Notifications Tab)
+        itemColor = notificationTabColor;
+      } else {
+        itemColor = colorScheme.primary;
+      }
+    } else {
+      itemColor = colorScheme.onSurface.withOpacity(0.6);
+    }
+
     return Expanded(
       child: InkWell(
         onTap: () => _onItemTapped(index),
@@ -139,13 +152,13 @@ class _MainBuyerScreenState extends State<MainBuyerScreen> {
           children: <Widget>[
             Icon(
               icon,
-              color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.6),
+              color: itemColor,
             ),
             Text(
               label,
               style: TextStyle(
                 fontSize: 10,
-                color: isSelected ? colorScheme.primary : colorScheme.onSurface.withOpacity(0.6),
+                color: itemColor,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
             ),

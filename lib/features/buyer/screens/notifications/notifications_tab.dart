@@ -29,7 +29,9 @@ IconData _getIconForOrderProduceCategory(ProduceCategory category) {
 Color _getColorForOrderStatus(app_order.OrderStatus status, ColorScheme colorScheme) {
   switch (status) {
     case app_order.OrderStatus.pending_confirmation:
+      return Colors.orange.shade700;
     case app_order.OrderStatus.confirmed_by_platform:
+      return Colors.teal.shade700;
     case app_order.OrderStatus.searching_for_driver:
       return Colors.orange.shade700;
     case app_order.OrderStatus.driver_assigned:
@@ -124,6 +126,23 @@ class _NotificationsTabState extends State<NotificationsTab> {
           }
           final orders = snapshot.data!;
 
+          // Sort orders
+          orders.sort((a, b) {
+            int getSortPriority(app_order.OrderStatus status) {
+              switch (status) {
+                case app_order.OrderStatus.confirmed_by_platform:
+                  return 0;
+                case app_order.OrderStatus.pending_confirmation:
+                  return 1;
+                case app_order.OrderStatus.delivered:
+                  return 3;
+                default:
+                  return 2; // Other statuses
+              }
+            }
+            return getSortPriority(a.status).compareTo(getSortPriority(b.status));
+          });
+
           return ListView.builder(
             padding: const EdgeInsets.only(top:8.0, bottom: 70.0, left: 8.0, right: 8.0),
             itemCount: orders.length,
@@ -146,6 +165,9 @@ class _NotificationsTabState extends State<NotificationsTab> {
               } else if (order.status.name.contains('pending') || order.status.name.contains('searching')) {
                  iconBgColor = Colors.orange.shade100;
                  iconColor = Colors.orange.shade800;
+              } else if (order.status == app_order.OrderStatus.confirmed_by_platform) { // Added specific check for confirmed_by_platform for icon
+                 iconBgColor = Colors.teal.shade100;
+                 iconColor = Colors.teal.shade800;
               } else if (order.status.name.contains('driver') || order.status.name.contains('pickup') || order.status.name.contains('route')) {
                  iconBgColor = Colors.blue.shade100;
                  iconColor = Colors.blue.shade800;
