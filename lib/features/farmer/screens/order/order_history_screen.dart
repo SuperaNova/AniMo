@@ -36,20 +36,20 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
+    // final textTheme = Theme.of(context).textTheme; // Not explicitly used in the provided snippet
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Order History'),
-        backgroundColor: colorScheme.surfaceContainerHighest, // Themed AppBar
+        backgroundColor: colorScheme.surfaceContainerHighest,
         foregroundColor: colorScheme.onSurfaceVariant,
         elevation: 1,
       ),
-      backgroundColor: colorScheme.surfaceContainerLow, // Themed background
+      backgroundColor: colorScheme.surfaceContainerLow,
       body: _currentUserId == null
           ? Center(child: Text("User not authenticated.", style: TextStyle(color: colorScheme.onSurfaceVariant)))
           : StreamBuilder<List<Order>>(
-        stream: _firestoreService.getFarmerOrders(), // Fetches all orders for the farmer
+        stream: _firestoreService.getFarmerOrders(),
         builder: (context, orderSnapshot) {
           if (orderSnapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -76,7 +76,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
             );
           }
 
-          // Define terminal/non-active statuses
           const List<OrderStatus> nonActiveStatuses = [
             OrderStatus.completed,
             OrderStatus.cancelled_by_buyer,
@@ -86,16 +85,13 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
             OrderStatus.disputed,
           ];
 
-          // Filter for non-active orders
           List<Order> historicalOrders = orderSnapshot.data!
               .where((order) => nonActiveStatuses.contains(order.status))
               .toList();
 
-          // Sort by lastUpdated or completedAt (newest first)
+          // Sort by lastUpdated (newest first)
           historicalOrders.sort((a, b) {
-            DateTime dateA = a.lastUpdated;
-            DateTime dateB = b.lastUpdated;
-            return dateB.compareTo(dateA);
+            return b.lastUpdated.compareTo(a.lastUpdated); // Use lastUpdated for sorting
           });
 
           if (historicalOrders.isEmpty) {
@@ -103,7 +99,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Text(
-                  'No historical orders (completed, cancelled, etc.) found.',
+                  'No historical orders found.',
                   style: TextStyle(fontSize: 18, color: colorScheme.onSurfaceVariant),
                   textAlign: TextAlign.center,
                 ),
@@ -122,16 +118,17 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                 builder: (context, listingSnapshot) {
                   ProduceListing? produceListing = listingSnapshot.data;
                   final styleInfo = getStyleForOrderStatus(order.status, colorScheme);
-                  final DateFormat dateFormat = DateFormat('MMM d, yyyy');
-                  final String dateString =  dateFormat.format(order.lastUpdated);
+                  final DateFormat dateFormat = DateFormat('MMM d, yyyy'); // Consistent date format
 
-                  // Using the common_widgets.buildActivityDisplayItem or a similar custom widget
-                  return buildActivityDisplayItem(
+                  // Use lastUpdated for the date display
+                  final String dateString = dateFormat.format(order.lastUpdated);
+
+                  return buildActivityDisplayItem( // Using your common widget
                     icon: styleInfo['icon'] as IconData,
                     iconBgColor: styleInfo['bgColor'] as Color,
                     iconColor: styleInfo['color'] as Color,
                     title: produceListing?.produceName ?? order.produceName,
-                    subtitle: 'Qty: ${order.orderedQuantity.toStringAsFixed(1)} ${order.unit} • Buyer: ${order.buyerId.substring(0, math.min(order.buyerId.length, 6))}...',
+                    subtitle: 'Qty: ${order.orderedQuantity.toStringAsFixed(1)} ${order.unit} \nBuyer: ${order.buyerId.substring(0, math.min(order.buyerId.length, 6))}...',
                     amountOrStatus: "${order.status.displayName}\n$dateString",
                   );
                 },
