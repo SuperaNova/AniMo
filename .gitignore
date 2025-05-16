@@ -11,6 +11,7 @@
 .svn/
 .swiftpm/
 migrate_working_dir/
+functions/.env.animo-9fffb
 
 # IntelliJ related
 *.iml
