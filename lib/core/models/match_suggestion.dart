@@ -14,7 +14,8 @@ enum MatchStatus {
   rejected_by_buyer('Rejected by Buyer'),
   expired('Expired'), // Suggestion timed out
   cancelled('Cancelled'), // e.g. if listing becomes unavailable
-  order_created('Order Created');
+  order_created('Order Created'),
+  ai_suggestion_for_buyer('AI Suggestion'); // Added for AI-generated suggestions
 
   const MatchStatus(this.displayName);
   final String displayName;

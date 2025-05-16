@@ -9,6 +9,7 @@ import 'package:animo/services/firestore_service.dart';
 import 'package:intl/intl.dart';
 import 'add_buyer_request_screen.dart';
 import 'produce_listing_detail_screen.dart';
+import 'match_suggestions_screen.dart';
 
 // TODO: Import AddBuyerRequestScreen when it's created
 // import 'add_buyer_request_screen.dart'; 
@@ -240,125 +241,89 @@ class BuyerDashboardScreen extends StatelessWidget {
               },
             ),
 
-            // ADDED: New section for Match Suggestions for Buyer
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16.0, 24.0, 16.0, 8.0),
-              child: Text(
-                'Match Suggestions for You:',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-            ),
-            StreamBuilder<List<MatchSuggestion>>(
-              stream: firestoreService.getBuyerMatchSuggestions(), 
+            // Match Suggestions Card with Count
+            StreamBuilder<List<ProduceListing>>(
+              stream: firestoreService.getProduceListingsFromMatchSuggestions(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
+                
                 if (snapshot.hasError) {
-                  debugPrint("Error in BuyerDashboard Suggestions StreamBuilder: ${snapshot.error}");
-                  debugPrintStack(stackTrace: snapshot.stackTrace);
-                  return Center(child: Text('Error fetching your suggestions: ${snapshot.error}'));
+                  return Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text('Error loading matches: ${snapshot.error}'),
+                  );
                 }
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const Center(child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text('No new match suggestions for you at the moment.'),
-                  ));
-                }
-
-                final suggestions = snapshot.data!;
-                // Filter suggestions that are pending buyer action or accepted by farmer (waiting for buyer)
-                final relevantSuggestions = suggestions.where((s) => 
-                  s.status == MatchStatus.pending_buyer_approval ||
-                  s.status == MatchStatus.accepted_by_farmer
-                ).toList();
-
-                if (relevantSuggestions.isEmpty) {
-                   return const Center(child: Padding(
-                    padding: EdgeInsets.all(16.0),
-                    child: Text('No suggestions currently requiring your action.'),
-                  ));
-                }
-
-                return ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: relevantSuggestions.length,
-                  itemBuilder: (context, index) {
-                    final suggestion = relevantSuggestions[index];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4.0),
-                      child: ListTile(
-                        title: Text('Suggestion for: ${suggestion.produceName}'),
-                        subtitle: Text(
-                            'Farmer: ${suggestion.farmerName ?? 'Unknown'}\nQuantity: ${suggestion.suggestedQuantity} ${suggestion.unit}\nStatus: ${suggestion.status.displayName}'),
-                        isThreeLine: true,
-                        trailing: (suggestion.status == MatchStatus.pending_buyer_approval || 
-                                   suggestion.status == MatchStatus.accepted_by_farmer) 
-                          ? Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: <Widget>[
-                                IconButton(
-                                  icon: const Icon(Icons.check_circle_outline, color: Colors.green),
-                                  tooltip: 'Accept Suggestion',
-                                  onPressed: () async {
-                                    try {
-                                      MatchStatus nextStatus;
-                                      if (suggestion.status == MatchStatus.pending_buyer_approval) {
-                                        nextStatus = MatchStatus.accepted_by_buyer;
-                                      } else if (suggestion.status == MatchStatus.accepted_by_farmer) {
-                                        nextStatus = MatchStatus.confirmed;
-                                      } else {
-                                        print("Unexpected suggestion status on accept in BuyerDashboard: ${suggestion.status}");
-                                        return; 
-                                      }
-                                      await firestoreService.updateMatchSuggestionStatus(
-                                        suggestion.id!,
-                                        nextStatus,
-                                      );
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Suggestion accepted!')),
-                                        );
-                                      }
-                                    } catch (e) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Error accepting suggestion: $e')),
-                                        );
-                                      }
-                                    }
-                                  },
+                
+                final count = snapshot.hasData ? snapshot.data!.length : 0;
+                
+                return Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                  elevation: 3,
+                  color: Colors.red.shade50,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12.0),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const MatchSuggestionsScreen()),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 24,
+                            backgroundColor: Colors.red.shade100,
+                            child: Icon(
+                              Icons.handshake,
+                              size: 24,
+                              color: Colors.red.shade800,
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  count > 0 ? '$count Match Suggestions' : 'Match Suggestions',
+                                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.red.shade900
+                                  ),
                                 ),
-                                IconButton(
-                                  icon: const Icon(Icons.cancel_outlined, color: Colors.red),
-                                  tooltip: 'Reject Suggestion',
-                                  onPressed: () async {
-                                    try {
-                                      await firestoreService.updateMatchSuggestionStatus(
-                                        suggestion.id!,
-                                        MatchStatus.rejected_by_buyer,
-                                      );
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          const SnackBar(content: Text('Suggestion rejected.')),
-                                        );
-                                      }
-                                    } catch (e) {
-                                      if (context.mounted) {
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('Error rejecting suggestion: $e')),
-                                        );
-                                      }
-                                    }
-                                  },
+                                const SizedBox(height: 4),
+                                Text(
+                                  count > 0 
+                                      ? 'AI matched produce for your requests' 
+                                      : 'No new match suggestions available',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: Colors.red.shade800,
+                                  ),
                                 ),
                               ],
-                            )
-                          : null,
+                            ),
+                          ),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).push(
+                                MaterialPageRoute(builder: (context) => const MatchSuggestionsScreen()),
+                              );
+                            },
+                            icon: const Icon(Icons.arrow_forward),
+                            label: const Text('VIEW'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.red.shade700,
+                              foregroundColor: Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 );
               },
             ),

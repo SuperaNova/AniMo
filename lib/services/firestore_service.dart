@@ -119,15 +119,75 @@ class FirestoreService {
   }
 
   Stream<List<MatchSuggestion>> getBuyerMatchSuggestions() {
-    if (currentUserId == null) return Stream.value([]);
+    debugPrint("FirestoreService: getBuyerMatchSuggestions called.");
+    if (currentUserId == null) {
+      debugPrint("FirestoreService: currentUserId is null, returning empty stream.");
+      return Stream.value([]);
+    }
+    
+    // TEST: Direct document fetch by ID
+    // This bypasses the query logic entirely and fetches the document directly
+    debugPrint("FirestoreService: TEST - Fetching document directly by ID");
+    _db.collection('matchSuggestions').doc('eSDa5zYujmPmkKv0Jk6a').get().then((doc) {
+      if (doc.exists) {
+        debugPrint("DIRECT FETCH SUCCESS! Document exists: ${doc.id}");
+        final data = doc.data();
+        debugPrint("Document data: buyerId=${data?['buyerId']}, status=${data?['status']}");
+      } else {
+        debugPrint("DIRECT FETCH FAILED. Document does not exist.");
+      }
+    }).catchError((e) {
+      debugPrint("DIRECT FETCH ERROR: $e");
+    });
+    
+    // Collection name variations
+    const collectionNames = [
+      'matchSuggestions',  // Original
+      'MatchSuggestions',  // Capital M
+      'matchsuggestions',  // All lowercase
+      'match_suggestions', // Underscore
+    ];
+    
+    for (final collName in collectionNames) {
+      debugPrint("FirestoreService: Testing collection name: '$collName'");
+      _db.collection(collName)
+        .where('buyerId', isEqualTo: 'AkX4izwagvfM7BrE0dd2FAUBKNp2') // Hardcoded ID for test
+        .get()
+        .then((snapshot) {
+          debugPrint("TEST: '$collName' query returned ${snapshot.docs.length} docs");
+          if (snapshot.docs.isNotEmpty) {
+            for (final doc in snapshot.docs) {
+              debugPrint("Found doc ID: ${doc.id} with buyerId=${doc.data()['buyerId']}");
+            }
+          }
+        })
+        .catchError((e) {
+          debugPrint("TEST: '$collName' query error: $e");
+        });
+    }
+
+    // Regular query with debug info
+    debugPrint("FirestoreService: Regular query for buyerId: $currentUserId");
     return _db
         .collection('matchSuggestions')
         .where('buyerId', isEqualTo: currentUserId)
-        .orderBy('createdAt', descending: true)
+        // .orderBy('suggestionTimestamp', descending: true) // Temporarily remove orderBy
         .snapshots()
-        .map((snapshot) => snapshot.docs
-            .map((doc) => MatchSuggestion.fromFirestore(doc.data(), doc.id))
-            .toList());
+        .map((snapshot) {
+          debugPrint("FirestoreService: Snapshot received with ${snapshot.docs.length} docs for buyerId: $currentUserId (Simplified)");
+          // SIMPLIFIED MAPPING
+          try {
+            final suggestions = snapshot.docs.map((doc) {
+                debugPrint("FirestoreService: Simplified mapping doc ID: ${doc.id}");
+                return MatchSuggestion.fromFirestore(doc.data(), doc.id);
+            }).toList();
+            debugPrint("FirestoreService: Simplified successfully mapped ${suggestions.length} suggestions for buyerId: $currentUserId");
+            return suggestions;
+          } catch (e,s) {
+            debugPrint("FirestoreService: ERROR in SIMPLIFIED stream map for getBuyerMatchSuggestions: $e\n$s");
+            return <MatchSuggestion>[];
+          }
+        });
   }
 
   Future<void> updateMatchSuggestionStatus(String suggestionId, MatchStatus newStatus, {String? rejectionReason}) async {
@@ -589,5 +649,67 @@ class FirestoreService {
     };
 
     await orderRef.update(updateData);
+  }
+
+  // New method to get produce listings from match suggestions for the current buyer
+  Stream<List<ProduceListing>> getProduceListingsFromMatchSuggestions() {
+    debugPrint("FirestoreService: getProduceListingsFromMatchSuggestions called.");
+    if (currentUserId == null) {
+      debugPrint("FirestoreService: currentUserId is null, returning empty stream.");
+      return Stream.value([]);
+    }
+    
+    debugPrint("FirestoreService: Fetching match suggestions for buyerId: $currentUserId");
+    
+    // First get the match suggestions to extract listingIds
+    return _db
+        .collection('matchSuggestions')
+        .where('buyerId', isEqualTo: currentUserId)
+        .snapshots()
+        .asyncMap((snapshot) async {
+          debugPrint("FirestoreService: Found ${snapshot.docs.length} match suggestions for buyerId: $currentUserId");
+          
+          // Extract all listingIds from the match suggestions
+          final listingIds = snapshot.docs
+              .map((doc) => doc.data()['listingId'] as String?)
+              .where((id) => id != null && id.isNotEmpty)
+              .toList();
+          
+          debugPrint("FirestoreService: Extracted ${listingIds.length} listingIds from match suggestions");
+          
+          if (listingIds.isEmpty) {
+            return <ProduceListing>[];
+          }
+          
+          // Now fetch all the produceListings with these IDs
+          try {
+            // Split into chunks of 10 if needed (Firestore limit for 'in' queries)
+            final List<ProduceListing> allListings = [];
+            
+            // Firestore allows up to 10 values in 'whereIn' query
+            for (int i = 0; i < listingIds.length; i += 10) {
+              final end = (i + 10 < listingIds.length) ? i + 10 : listingIds.length;
+              final chunk = listingIds.sublist(i, end);
+              
+              debugPrint("FirestoreService: Fetching chunk of ${chunk.length} listingIds");
+              final snapshot = await _db
+                  .collection('produceListings')
+                  .where(FieldPath.documentId, whereIn: chunk)
+                  .get();
+              
+              final listings = snapshot.docs
+                  .map((doc) => ProduceListing.fromFirestore(doc.data(), doc.id))
+                  .toList();
+              
+              allListings.addAll(listings);
+            }
+            
+            debugPrint("FirestoreService: Successfully fetched ${allListings.length} produce listings from match suggestions");
+            return allListings;
+          } catch (e, s) {
+            debugPrint("FirestoreService: ERROR fetching produce listings from match suggestions: $e\n$s");
+            return <ProduceListing>[];
+          }
+        });
   }
 } 
