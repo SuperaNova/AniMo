@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import './location_data.dart'; // For pickup and delivery locations
 import './produce_listing.dart'; // For ProduceCategory, ProduceListingStatus if needed directly
 
@@ -475,4 +476,37 @@ class OrderStatusUpdate {
       if (reason != null) 'reason': reason,
     };
   }
-} 
+}
+
+Map<String, dynamic> getStyleForOrderStatus(OrderStatus status, ColorScheme colorScheme) {
+  switch (status) {
+    case OrderStatus.pending_confirmation:
+      return {'icon': Icons.hourglass_empty_outlined, 'color': colorScheme.tertiary, 'bgColor': colorScheme.tertiaryContainer.withOpacity(0.3)};
+    case OrderStatus.confirmed_by_platform:
+      return {'icon': Icons.playlist_add_check_circle_outlined, 'color': colorScheme.primary, 'bgColor': colorScheme.primaryContainer.withOpacity(0.3)};
+    case OrderStatus.searching_for_driver:
+      return {'icon': Icons.person_search_outlined, 'color': Colors.blueGrey[700]!, 'bgColor': Colors.blueGrey[100]!};
+    case OrderStatus.driver_assigned:
+      return {'icon': Icons.two_wheeler_outlined, 'color': colorScheme.secondary, 'bgColor': colorScheme.secondaryContainer.withOpacity(0.3)};
+    case OrderStatus.driver_en_route_to_pickup:
+    case OrderStatus.en_route_to_delivery:
+      return {'icon': Icons.route_outlined, 'color': Colors.cyan[700]!, 'bgColor': Colors.cyan[100]!};
+    case OrderStatus.at_pickup_location:
+    case OrderStatus.at_delivery_location:
+      return {'icon': Icons.storefront_outlined, 'color': Colors.brown[600]!, 'bgColor': Colors.brown[100]!};
+    case OrderStatus.picked_up:
+      return {'icon': Icons.takeout_dining_outlined, 'color': Colors.lime[800]!, 'bgColor': Colors.lime[100]!};
+    case OrderStatus.delivered:
+      return {'icon': Icons.local_shipping_outlined, 'color': Colors.lightGreen[700]!, 'bgColor': Colors.lightGreen[100]!};
+    case OrderStatus.completed:
+      return {'icon': Icons.check_circle_outline, 'color': colorScheme.secondary, 'bgColor': colorScheme.secondaryContainer.withOpacity(0.3)};
+    case OrderStatus.cancelled_by_buyer:
+    case OrderStatus.cancelled_by_farmer:
+    case OrderStatus.cancelled_by_platform:
+    case OrderStatus.failed_delivery:
+    case OrderStatus.disputed:
+      return {'icon': Icons.error_outline, 'color': colorScheme.error, 'bgColor': colorScheme.errorContainer.withOpacity(0.3)};
+    default:
+      return {'icon': Icons.info_outline, 'color': colorScheme.onSurfaceVariant, 'bgColor': colorScheme.surfaceVariant.withOpacity(0.3)};
+  }
+}

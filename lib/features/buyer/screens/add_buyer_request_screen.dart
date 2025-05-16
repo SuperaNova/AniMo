@@ -114,12 +114,32 @@ class _AddBuyerRequestScreenState extends State<AddBuyerRequestScreen> {
         _currentUser = await firestoreService.getAppUser(firebaseUser.uid);
         if (_currentUser?.defaultDeliveryLocation != null) {
           final locMap = _currentUser!.defaultDeliveryLocation!;
-          _deliveryAddressDetailsController.text = locMap['formattedAddress'] as String? ?? '';
+          final formattedAddressString = locMap['formattedAddress'] as String? ?? '';
+          _deliveryAddressDetailsController.text = formattedAddressString;
           _loadedDefaultLat = locMap['latitude'] as double?;
           _loadedDefaultLng = locMap['longitude'] as double?;
-          // Optionally try to prefill barangay/municipality if available in map
-          _barangayController.text = locMap['barangay'] as String? ?? _barangayController.text;
-          _municipalityController.text = locMap['municipality'] as String? ?? _municipalityController.text;
+
+          String? barangayFromMap = locMap['barangay'] as String?;
+          String? municipalityFromMap = locMap['municipality'] as String?;
+          String? parsedBarangay;
+          String? parsedMunicipality;
+
+          if (formattedAddressString.isNotEmpty) {
+            List<String> parts = formattedAddressString.split(',').map((s) => s.trim()).toList();
+            if (parts.isNotEmpty) {
+              parsedBarangay = parts[0];
+            }
+            if (parts.length > 1) {
+              parsedMunicipality = parts[1];
+            }
+          }
+
+          _barangayController.text = (barangayFromMap != null && barangayFromMap.isNotEmpty)
+                                      ? barangayFromMap
+                                      : (parsedBarangay ?? _barangayController.text);
+          _municipalityController.text = (municipalityFromMap != null && municipalityFromMap.isNotEmpty)
+                                         ? municipalityFromMap
+                                         : (parsedMunicipality ?? _municipalityController.text);
         }
       } catch (e) {
         debugPrint("Error loading user details/default address: $e");

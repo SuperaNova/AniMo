@@ -97,56 +97,14 @@ class ProfileScreen extends StatelessWidget {
 
             const SizedBox(height: 32),
             // Sign Out Button
-            ElevatedButton.icon(
-              icon: const Icon(Icons.logout),
-              label: const Text('Sign Out'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: colorScheme.errorContainer,
-                foregroundColor: colorScheme.onErrorContainer,
-                padding: const EdgeInsets.symmetric(vertical: 16.0),
-                textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.bold),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12.0),
-                ),
-              ),
-              onPressed: () async {
-                final confirmSignOut = await showDialog<bool>(
-                  context: context,
-                  builder: (BuildContext dialogContext) {
-                    return AlertDialog(
-                      title: const Text('Confirm Sign Out'),
-                      content: const Text('Are you sure you want to sign out?'),
-                      actions: <Widget>[
-                        TextButton(
-                          child: Text('Cancel', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                          onPressed: () {
-                            Navigator.of(dialogContext).pop(false); // User canceled
-                          },
-                        ),
-                        TextButton(
-                          child: Text('Sign Out', style: TextStyle(color: colorScheme.error)),
-                          onPressed: () {
-                            Navigator.of(dialogContext).pop(true); // User confirmed
-                          },
-                        ),
-                      ],
-                    );
-                  },
-                );
-
-                if (confirmSignOut == true) {
-                  try {
-                    await authService.signOut();
-                    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => LandingScreen()), (Route<dynamic> route) => false);
-                  } catch (e) {
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error signing out: ${e.toString()}')),
-                      );
-                    }
-                  }
-                }
+            ListTile(
+              leading: Icon(Icons.logout, color: colorScheme.error),
+              title: Text('Sign Out', style: textTheme.titleMedium?.copyWith(color: colorScheme.error, fontWeight: FontWeight.bold)),
+              onTap: () {
+                _showLogoutBottomSheet(context, authService);
               },
+              tileColor: colorScheme.errorContainer.withOpacity(0.3),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.0)),
             ),
             const SizedBox(height: 24),
             Center(
@@ -158,6 +116,65 @@ class ProfileScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _showLogoutBottomSheet(BuildContext context, FirebaseAuthService authService) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20.0)),
+      ),
+      builder: (BuildContext bc) {
+        return SafeArea(
+          child: Container(
+            padding: const EdgeInsets.all(16.0), // Consistent padding
+            child: Wrap(
+              children: <Widget>[
+                ListTile(
+                  title: Text(
+                    'Confirm Logout',
+                    style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold), // Adjusted style
+                  ),
+                  subtitle: const Text('Are you sure you want to sign out from your account?'),
+                ),
+                const Divider(),
+                ListTile(
+                  leading: Icon(Icons.exit_to_app, color: colorScheme.error),
+                  title: Text('Sign Out', style: TextStyle(color: colorScheme.error, fontWeight: FontWeight.bold)),
+                  onTap: () async {
+                    Navigator.of(context).pop(); // Close the bottom sheet first
+                    try {
+                      await authService.signOut();
+                      if (context.mounted) {
+                        // Navigate to LandingScreen (assuming its route is '/')
+                        Navigator.of(context).pushNamedAndRemoveUntil('/', (route) => false);
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text("Error signing out: ${e.toString()}")),
+                        );
+                      }
+                      debugPrint("Error during sign out: $e");
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: Icon(Icons.cancel_outlined, color: colorScheme.onSurfaceVariant),
+                  title: Text('Cancel', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                  onTap: () {
+                    Navigator.of(bc).pop(); // Close the bottom sheet (use bc context)
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
