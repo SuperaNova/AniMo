@@ -10,17 +10,15 @@ import '../../../../core/models/order.dart';
 import '../../../../core/models/produce_listing.dart';
 import '../../../../services/firebase_auth_service.dart';
 import '../../../../services/firestore_service.dart';
-import '../active_orders_screen.dart';
+import '../order/active_orders_screen.dart';
+import '../order/order_history_screen.dart';
 
 class DashboardTabContent extends StatefulWidget {
   final FarmerStats? farmerStats;
   final bool isLoadingStats;
   final String? statsErrorMessage;
   final FirebaseAuthService firebaseAuthService;
-  final FirestoreService firestoreService; // General FirestoreService
-  // Assuming ProduceListingService is distinct if used for getProduceListingById
-  // If FirestoreService contains all methods, then produceListingService might be redundant here.
-  // Based on user's last code, it was passed, so keeping it for _buildRecentCompletedOrdersSection.
+  final FirestoreService firestoreService;
   final ProduceListingService produceListingService;
 
 
@@ -112,7 +110,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     }
 
     return Container(
-      color: colorScheme.surface,
+      color: colorScheme.inverseSurface,
       child: SingleChildScrollView(
         child: Column(
           children: [
@@ -129,12 +127,13 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
               ),
             ),
             Container(
-              color: colorScheme.surface,
+              color: colorScheme.surfaceContainerLow,
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Unified card for pending confirmation and active orders
                   _buildUnifiedOrdersPromptCard(context, widget.firestoreService, colorScheme),
-                  _buildRecentCompletedOrdersSection(context, widget.firebaseAuthService, widget.firestoreService, widget.produceListingService, colorScheme)
+                  _buildRecentCompletedOrdersSection(context, widget.firebaseAuthService, widget.firestoreService, widget.produceListingService, colorScheme),
+                  const SizedBox(height: 80),
                 ],
               ),
             ),
@@ -206,7 +205,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
           ),
           const SizedBox(height: 8),
           Text(
-            NumberFormat.currency(locale: 'en_PH', symbol: '₱', decimalDigits: 2).format(stats.totalListingsValue),
+            NumberFormat.currency(locale: Intl.defaultLocale, symbol: '₱', decimalDigits: 2).format(stats.totalListingsValue),
             style: TextStyle(
                 color: colorScheme.surface, fontSize: 36, fontWeight: FontWeight.bold),
           ),
@@ -285,8 +284,8 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     );
   }
 
-  // --- UNIFIED ORDERS PROMPT CARD ---
   Widget _buildUnifiedOrdersPromptCard(BuildContext context, FirestoreService firestoreService, ColorScheme colorScheme) {
+    // ... (Implementation remains the same) ...
     return StreamBuilder<int>(
       stream: firestoreService.watchPendingConfirmationOrdersCount(),
       initialData: widget.farmerStats?.pendingConfirmationOrdersCount ?? 0,
@@ -299,7 +298,6 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
         }
 
         if (pendingOrdersCount > 0) {
-          // Display "Orders to Confirm" card
           return _buildPromptCardContent(
             context: context,
             colorScheme: colorScheme,
@@ -313,12 +311,11 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
             textColor: colorScheme.onTertiaryContainer,
             onTap: () {
               Navigator.of(context).push(
-                MaterialPageRoute(builder: (context) => const ActiveOrdersScreen()), // Or a specific confirmation screen
+                MaterialPageRoute(builder: (context) => const ActiveOrdersScreen()),
               );
             },
           );
         } else {
-          // No pending confirmation orders, so check for active in-progress orders
           return StreamBuilder<int>(
             stream: firestoreService.watchActiveInProgressOrdersCount(),
             initialData: widget.farmerStats?.activeInProgressOrdersCount ?? 0,
@@ -331,7 +328,6 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
               }
 
               if (activeOrdersCount > 0) {
-                // Display "Active Orders" card
                 return _buildPromptCardContent(
                   context: context,
                   colorScheme: colorScheme,
@@ -350,19 +346,18 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
                   },
                 );
               } else {
-                // No pending confirmation AND no active in-progress orders
                 return _buildPromptCardContent(
                     context: context,
                     colorScheme: colorScheme,
                     title: 'Order Updates',
-                    count: 0, // Explicitly 0
+                    count: 0,
                     messageSuffix: 'No pending or active orders',
-                    iconData: Icons.playlist_add_check_circle_outlined, // "All clear" icon
+                    iconData: Icons.playlist_add_check_circle_outlined,
                     cardColor: colorScheme.primaryContainer.withOpacity(0.7),
                     iconBgColor: colorScheme.primary,
                     iconColor: colorScheme.onPrimary,
                     textColor: colorScheme.onPrimaryContainer,
-                    onTap: () { // Still allow navigation, maybe to see all orders
+                    onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(builder: (context) => const ActiveOrdersScreen()),
                       );
@@ -376,7 +371,6 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     );
   }
 
-  // Helper to build the content of the prompt card, reduces duplication
   Widget _buildPromptCardContent({
     required BuildContext context,
     required ColorScheme colorScheme,
@@ -390,10 +384,10 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     required Color textColor,
     required VoidCallback onTap,
   }) {
+    // ... (Implementation remains the same) ...
     String message = count <= 0 ? messageSuffix : '$count $messageSuffix';
-
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16,16,16,8), // Consistent padding
+      padding: const EdgeInsets.fromLTRB(16,16,16,8),
       child: GestureDetector(
         onTap: onTap,
         child: Container(
@@ -442,7 +436,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: textColor.withOpacity(0.1), // Arrow icon bg based on text color
+                  color: textColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(Icons.arrow_forward_ios, color: textColor, size: 18),
@@ -454,11 +448,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     );
   }
 
-
   Widget _buildRecentCompletedOrdersSection(BuildContext context, FirebaseAuthService authService, FirestoreService firestoreService, ProduceListingService produceListingService, ColorScheme colorScheme) {
-    // ... (Implementation remains the same as in your selected code) ...
-    // Note: Ensure produceListingService is used if getProduceListingById is on it.
-    // If getProduceListingById is on FirestoreService, then pass firestoreService for that.
     final String? currentUserId = authService.currentFirebaseUser?.uid;
     if (currentUserId == null) {
       return Center(child: Text("User not authenticated for recent activity.", style: TextStyle(color: colorScheme.onSurfaceVariant)));
@@ -466,88 +456,97 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     Stream<List<Order>> stream = firestoreService.getFarmerOrders();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16,16,16,8),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16,16,16,8),
-        decoration: BoxDecoration(
-          color: colorScheme.surfaceContainer,
-          borderRadius: const BorderRadius.all(Radius.circular(20))
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Recently Completed Orders',
-                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            StreamBuilder<List<Order>>(
-              stream: stream,
-              builder: (context, orderSnapshot) {
-                if (orderSnapshot.connectionState == ConnectionState.waiting) {
-                  return Center(child: CircularProgressIndicator(color: colorScheme.primary));
-                }
-                if (orderSnapshot.hasError) {
-                  if (kDebugMode) {
-                    print("Error in RecentCompletedOrders StreamBuilder: ${orderSnapshot.error}");
+        padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
+        child: Container(
+          padding: const EdgeInsets.all(16.0), // Inner padding for the card content
+          decoration: BoxDecoration(
+              color: colorScheme.surfaceContainer, // Card background
+              borderRadius: const BorderRadius.all(Radius.circular(20))
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Recently Completed Orders',
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
+                  ),
+                  // --- ADDED "View All" BUTTON ---
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(builder: (context) => const OrderHistoryScreen()),
+                      );
+                    },
+                    child: Text(
+                      'View All',
+                      style: TextStyle(color: colorScheme.primary, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              StreamBuilder<List<Order>>(
+                stream: stream,
+                builder: (context, orderSnapshot) {
+                  if (orderSnapshot.connectionState == ConnectionState.waiting) {
+                    return Center(child: CircularProgressIndicator(color: colorScheme.primary));
                   }
-                  return Center(child: Text('Error loading orders: ${orderSnapshot.error?.toString()}', style: TextStyle(color: colorScheme.error)));
-                }
-                if (!orderSnapshot.hasData || orderSnapshot.data!.isEmpty) {
-                  return Center(child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text('No orders found yet.', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                  ));
-                }
+                  if (orderSnapshot.hasError) {
+                    if (kDebugMode) {
+                      print("Error in RecentCompletedOrders StreamBuilder: ${orderSnapshot.error}");
+                    }
+                    return Center(child: Text('Error loading orders: ${orderSnapshot.error?.toString()}', style: TextStyle(color: colorScheme.error)));
+                  }
+                  if (!orderSnapshot.hasData || orderSnapshot.data!.isEmpty) {
+                    return Center(child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text('No orders found yet.', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                    ));
+                  }
 
-                List<Order> completedOrders = orderSnapshot.data!
-                    .where((order) => order.status == OrderStatus.completed)
-                    .toList();
+                  List<Order> completedOrders = orderSnapshot.data!
+                      .where((order) => order.status == OrderStatus.completed)
+                      .toList();
 
-                completedOrders.sort((a, b) => b.lastUpdated.compareTo(a.lastUpdated));
+                  completedOrders.sort((a, b) => b.lastUpdated.compareTo(a.lastUpdated));
 
-                if (completedOrders.isEmpty) {
-                  return Center(child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Text('No recent completed orders.', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                  ));
-                }
+                  if (completedOrders.isEmpty) {
+                    return Center(child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Text('No recent completed orders.', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                    ));
+                  }
 
-                final itemCountToShow = math.min(completedOrders.length, 3);
+                  final itemCountToShow = math.min(completedOrders.length, 3);
 
-                return ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: itemCountToShow,
-                  itemBuilder: (context, index) {
-                    final order = completedOrders[index];
-                    return FutureBuilder<ProduceListing?>(
-                      // Use widget.produceListingService or widget.firestoreService
-                      // depending on where getProduceListingById is defined.
-                      // Assuming it's on widget.firestoreService as per your constructor.
-                      future: widget.produceListingService.getProduceListingById(order.produceListingId),
-                      builder: (context, listingSnapshot) {
-                        ProduceListing? produceListing = listingSnapshot.data;
-                        return _buildCompletedOrderItem(
-                          context: context,
-                          order: order,
-                          produceListing: produceListing,
-                          colorScheme: colorScheme,
-                        );
-                      },
-                    );
-                  },
-                );
-              },
-            )
-          ],
-        ),
-      )
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: itemCountToShow,
+                    itemBuilder: (context, index) {
+                      final order = completedOrders[index];
+                      return FutureBuilder<ProduceListing?>(
+                        future: produceListingService.getProduceListingById(order.produceListingId),
+                        builder: (context, listingSnapshot) {
+                          ProduceListing? produceListing = listingSnapshot.data;
+                          return _buildCompletedOrderItem(
+                            context: context,
+                            order: order,
+                            produceListing: produceListing,
+                            colorScheme: colorScheme,
+                          );
+                        },
+                      );
+                    },
+                  );
+                },
+              )
+            ],
+          ),
+        )
     );
   }
 
@@ -557,9 +556,9 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     required ProduceListing? produceListing,
     required ColorScheme colorScheme,
   }) {
-    // ... (Implementation remains the same as in your selected code) ...
-    final DateFormat dateFormat = DateFormat('MMM d, yyyy');
-    final String completedDateString = dateFormat.format(order.lastUpdated);
+    // ... (Implementation remains the same) ...
+    final DateFormat dateFormat = DateFormat('MMM d, yy'); // Slightly shorter date
+    final String completedDateString =  dateFormat.format(order.lastUpdated);
 
     IconData itemIcon = produceListing?.produceCategory.icon ?? Icons.inventory_2_outlined;
     Color itemIconColor = produceListing?.produceCategory.color ?? colorScheme.onSurfaceVariant;
@@ -567,14 +566,15 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6.0),
-      elevation: 0.5,
-      color: colorScheme.surfaceContainer,
+      elevation: 0.0, // Flat design within the parent card
+      color: Colors.transparent, // Transparent as parent card has color
+      // color: colorScheme.surface, // Or a slightly different surface if desired
       shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10.0),
-          side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.3))
+        borderRadius: BorderRadius.circular(10.0),
+        // side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.3)) // Optional border
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12.0),
+        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0), // Adjusted padding
         child: Row(
           children: [
             CircleAvatar(
@@ -605,7 +605,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  NumberFormat.currency(symbol: '${order.currency} ', decimalDigits: 2).format(order.totalOrderAmount),
+                  NumberFormat.currency(locale: Intl.defaultLocale, symbol: '${order.currency} ', decimalDigits: 2).format(order.totalOrderAmount),
                   style: TextStyle(fontSize: 14, color: colorScheme.primary, fontWeight: FontWeight.bold),
                 ),
                 Text(

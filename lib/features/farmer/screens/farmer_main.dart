@@ -98,6 +98,7 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
   @override
   Widget build(BuildContext context) {
     final List<Widget> screens = _buildScreens();
+    final colorScheme = Theme.of(context).colorScheme;
     Widget currentScreen;
 
     // Map UI index to screens list index (since FAB is not a screen)
@@ -111,7 +112,7 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: const Color(0xFF4A2E2B),
+        backgroundColor: colorScheme.inverseSurface,
         elevation: 0,
         title: Text(
           _getAppBarTitle(_selectedIndex),
