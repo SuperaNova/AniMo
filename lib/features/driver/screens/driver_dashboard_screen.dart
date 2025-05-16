@@ -12,6 +12,9 @@ import 'dart:async'; // For StreamSubscription
 import 'package:firebase_auth/firebase_auth.dart'; // For current user ID
 import 'package:animo/features/driver/screens/driver_active_order_detail_screen.dart';
 import 'package:animo/features/driver/screens/driver_active_orders_screen.dart';
+import 'dart:convert'; // For json.decode
+import 'package:http/http.dart' as http;
+import 'package:flutter_polyline_points/flutter_polyline_points.dart';
 
 // It's assumed that your Order, LocationInfo, and OrderStatus (if used as an enum)
 // are defined in 'package:animo/core/models/order.dart' or other relevant files.
@@ -24,6 +27,11 @@ class DriverDashboardScreen extends StatefulWidget {
 }
 
 class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
+  // --- Google Maps API Key --- 
+  // IMPORTANT: Replace with your actual Google Maps API Key enabled for Directions API
+  final String _googleApiKey = "AIzaSyARw7HMGDYTITaTbdHAW0MP0eZeOwy0e9Q";
+  // --- 
+
   static const LatLng _defaultInitialPosition = LatLng(11.2433, 125.0000); // Tacloban as fallback
   CameraPosition _currentCameraPosition = const CameraPosition(
     target: _defaultInitialPosition,
@@ -34,6 +42,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   final Set<Marker> _markers = {}; // Combined set for current location and orders
   bool _isLoadingLocation = true;
   String? _locationError;
+  LatLng? _currentDriverLocation;
 
   // Marker ID for current location
   final MarkerId _currentLocationMarkerId = const MarkerId('currentLocation');
@@ -41,6 +50,11 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
   StreamSubscription<List<app_order.Order>>? _nearbyOrdersSubscription;
   List<app_order.Order> _nearbyOrders = [];
   
+  StreamSubscription<List<app_order.Order>>? _driverActiveOrdersSubscription; // Re-added
+  List<app_order.Order> _driverActiveOrders = []; // Re-added
+  final Set<Polyline> _routePolylines = {}; // For storing route polylines
+  final PolylinePoints _polylinePoints = PolylinePoints(); // Uncommented
+
   late FirestoreService _firestoreService;
   User? _currentUser;
 
@@ -51,11 +65,15 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     _currentUser = FirebaseAuth.instance.currentUser;
     _fetchAndSetCurrentLocation(animate: false);
     _subscribeToNearbyOrders();
+    if (_currentUser != null) {
+      _subscribeToDriverActiveOrders(_currentUser!.uid); // Re-added
+    }
   }
 
   @override
   void dispose() {
     _nearbyOrdersSubscription?.cancel();
+    _driverActiveOrdersSubscription?.cancel(); // Re-added
     _mapController?.dispose();
     super.dispose();
   }
@@ -73,6 +91,26 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Error fetching nearby orders: $error")),
+        );
+      }
+    });
+  }
+
+  // Re-added method to subscribe to driver's active orders
+  void _subscribeToDriverActiveOrders(String driverId) {
+    _driverActiveOrdersSubscription = _firestoreService.getDriverActiveOrders(driverId).listen((orders) {
+      if (mounted) {
+        setState(() {
+          _driverActiveOrders = orders;
+          _updateMarkers(); // Update markers (will also handle active order markers)
+          _updateAllRoutes(); // Calculate and draw routes for these active orders
+        });
+      }
+    }, onError: (error) {
+      debugPrint("Error fetching driver's active orders: $error");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Error fetching your active orders: $error")),
         );
       }
     });
@@ -112,15 +150,17 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
       if (!mounted) return;
 
-      final currentLatLng = LatLng(position.latitude, position.longitude);
-      _currentCameraPosition = CameraPosition(target: currentLatLng, zoom: 15.0);
+      _currentDriverLocation = LatLng(position.latitude, position.longitude); // Store current location
+      _currentCameraPosition = CameraPosition(target: _currentDriverLocation!, zoom: 15.0);
 
       if (_mapController != null) {
         final cameraUpdate = CameraUpdate.newCameraPosition(_currentCameraPosition);
         animate ? _mapController!.animateCamera(cameraUpdate) : _mapController!.moveCamera(cameraUpdate);
       }
       
-      _updateCurrentLocationMarker(currentLatLng);
+      _updateCurrentLocationMarker(_currentDriverLocation!); 
+      _updateAllRoutes(); // Re-calculate routes when current location changes
+      
       if(mounted){
         setState(() {
           _isLoadingLocation = false;
@@ -129,6 +169,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       }
     } catch (e) {
       if (!mounted) return;
+      _currentDriverLocation = null;
       _handleLocationError("Cannot fetch current location: ${e.toString()}.");
       _updateCurrentLocationMarker(_defaultInitialPosition);
     } finally {
@@ -142,6 +183,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     setState(() {
       _locationError = errorMessage;
       _currentCameraPosition = defaultCameraPosition;
+      _routePolylines.clear(); // Clear routes if location fails
     });
     if (_mapController != null) {
       _mapController!.moveCamera(CameraUpdate.newCameraPosition(defaultCameraPosition));
@@ -152,12 +194,18 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
     if (!mounted) return;
     final Set<Marker> newMarkers = {};
 
-    final existingCurrentLocationMarker = _markers.firstWhere((m) => m.markerId == _currentLocationMarkerId, orElse: () => const Marker(markerId: MarkerId('none'))); 
-    if (existingCurrentLocationMarker.markerId != const MarkerId('none')){
+    // 1. Add/Update current location marker
+    final existingCurrentLocationMarker = _markers.firstWhere((m) => m.markerId == _currentLocationMarkerId, orElse: () => const Marker(markerId: MarkerId('none')));
+    if (existingCurrentLocationMarker.markerId != const MarkerId('none') && existingCurrentLocationMarker.position != const LatLng(0,0)) { // Ensure it has a valid position
         newMarkers.add(existingCurrentLocationMarker);
     }
 
+    // 2. Add markers for nearby available orders (Azure)
     for (final order in _nearbyOrders) {
+      // Optional: Don't show a nearby order marker if it's already one of the driver's active orders
+      bool isAlreadyActiveForThisDriver = _driverActiveOrders.any((activeOrder) => activeOrder.id == order.id);
+      if (isAlreadyActiveForThisDriver) continue;
+
       if (order.id != null && order.pickupLocation.latitude != 0.0 && order.pickupLocation.longitude != 0.0) {
         newMarkers.add(
           Marker(
@@ -178,24 +226,178 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
       }
     }
 
-    setState(() {
-      _markers.removeWhere((m) => m.markerId != _currentLocationMarkerId);
-      _markers.addAll(newMarkers.where((m) => m.markerId != _currentLocationMarkerId));
-    });
-  }
+    // 3. Add markers for the current driver's ACTIVE orders (Green) - at their PICKUP location
+    for (final order in _driverActiveOrders) {
+      if (order.id != null && order.pickupLocation.latitude != 0.0 && order.pickupLocation.longitude != 0.0) {
+        newMarkers.add(
+          Marker(
+            markerId: MarkerId('active_pickup_${order.id}'), // Differentiate active order markers
+            position: LatLng(order.pickupLocation.latitude, order.pickupLocation.longitude),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen), // Green for active
+            infoWindow: InfoWindow(
+              title: 'Your Active Order (Pickup): ${order.produceName}',
+              snippet: 'Status: ${order.status.displayName}. Tap for details.',
+            ),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => DriverActiveOrderDetailScreen(order: order)),
+              );
+            },
+          ),
+        );
+        // Optionally, add a marker for the delivery location of active orders too
+        // if (order.deliveryLocation.latitude != 0.0 && order.deliveryLocation.longitude != 0.0) {
+        //   newMarkers.add(Marker( ...for delivery location... ));
+        // }
+      }
+    }
 
+    if (mounted) {
+      setState(() {
+        _markers.clear(); // Clear all
+        _markers.addAll(newMarkers); // Add the new set
+      });
+    }
+  }
+  
   void _updateCurrentLocationMarker(LatLng coordinates) {
       if(!mounted) return;
       final newMarker = Marker(
             markerId: _currentLocationMarkerId, 
             position: coordinates,
-            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed), // Driver's location
             infoWindow: const InfoWindow(title: "Your Location"),
           );
-      setState(() {
-          _markers.removeWhere((m) => m.markerId == _currentLocationMarkerId);
-          _markers.add(newMarker);
-      });
+      if (mounted) {
+        setState(() {
+            // More controlled update for current location marker specifically
+            _markers.removeWhere((m) => m.markerId == _currentLocationMarkerId);
+            _markers.add(newMarker);
+        });
+      }
+  }
+
+  Future<void> _updateAllRoutes() async {
+    if (!mounted) return;
+    _routePolylines.clear();
+    if (_currentDriverLocation == null || _driverActiveOrders.isEmpty) {
+      if (mounted) setState(() {}); // Clear polylines if no location or no active orders
+      return;
+    }
+
+    for (final order in _driverActiveOrders) {
+      // For simplicity, routing to pickup location. Can be extended to delivery.
+      final destination = LatLng(order.pickupLocation.latitude, order.pickupLocation.longitude);
+      if (destination.latitude != 0.0 && destination.longitude != 0.0) {
+         // Create a unique ID for each polyline based on the order ID
+        String polylineIdVal = "route_${order.id}_pickup"; 
+        await _getRouteAndDrawPolyline(_currentDriverLocation!, destination, polylineIdVal);
+      }
+    }
+    if (mounted) setState(() {}); // Refresh map with new polylines
+  }
+
+  // Route fetching using Google Routes API (v2:computeRoutes)
+  Future<void> _getRouteAndDrawPolyline(LatLng origin, LatLng destination, String polylineIdVal) async {
+    if (!mounted) return;
+    debugPrint("Attempting to get route from $origin to $destination for polyline ID: $polylineIdVal using Routes API (v2:computeRoutes)");
+
+    List<LatLng> polylineCoordinates = [];
+
+    String url = "https://routes.googleapis.com/directions/v2:computeRoutes";
+
+    Map<String, dynamic> requestBody = {
+      "origin": {
+        "location": {
+          "latLng": {
+            "latitude": origin.latitude,
+            "longitude": origin.longitude
+          }
+        }
+      },
+      "destination": {
+        "location": {
+          "latLng": {
+            "latitude": destination.latitude,
+            "longitude": destination.longitude
+          }
+        }
+      },
+      "travelMode": "DRIVE",
+      "routingPreference": "TRAFFIC_AWARE", // Optional
+      "computeAlternativeRoutes": false,
+      "polylineEncoding": "ENCODED_POLYLINE"
+    };
+
+    Map<String, String> headers = {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": _googleApiKey, 
+      "X-Goog-FieldMask": "routes.polyline.encodedPolyline,routes.duration,routes.distanceMeters"
+    };
+
+    debugPrint("Routes API (v2:computeRoutes) URL for $polylineIdVal: $url");
+    debugPrint("Routes API (v2:computeRoutes) Request Body for $polylineIdVal: ${json.encode(requestBody)}");
+
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: headers,
+        body: json.encode(requestBody),
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['routes'] != null && 
+            data['routes'].isNotEmpty && 
+            data['routes'][0]['polyline'] != null && 
+            data['routes'][0]['polyline']['encodedPolyline'] != null) {
+          
+          String encodedPolyline = data['routes'][0]['polyline']['encodedPolyline'];
+          List<PointLatLng> decodedPolylinePoints = _polylinePoints.decodePolyline(encodedPolyline);
+          polylineCoordinates = decodedPolylinePoints.map((point) => LatLng(point.latitude, point.longitude)).toList();
+          debugPrint("Successfully fetched and decoded route for $polylineIdVal using Routes API (v2:computeRoutes). Points: ${polylineCoordinates.length}");
+        } else {
+          debugPrint("Routes API (v2:computeRoutes): No route found or polyline missing for $polylineIdVal. Response: ${response.body}");
+        }
+      } else {
+        debugPrint("Failed to fetch directions for $polylineIdVal using Routes API (v2:computeRoutes): HTTP ${response.statusCode}. Response: ${response.body}");
+      }
+    } catch (e, s) {
+      debugPrint("Exception during Routes API (v2:computeRoutes) call for $polylineIdVal: $e\n$s");
+    }
+    
+    // --- Fallback to Mocked polyline points ---
+    if (polylineCoordinates.isEmpty) { 
+        debugPrint("Using mocked polyline for $polylineIdVal as Routes API (v2:computeRoutes) call failed or returned no coordinates.");
+        polylineCoordinates = [
+         origin,
+         LatLng((origin.latitude + destination.latitude) / 2, (origin.longitude + destination.longitude) / 2 + 0.005),
+         destination,
+       ];
+    }
+    // --- End Fallback/Mock ---
+
+    if (polylineCoordinates.isNotEmpty) {
+      Polyline polyline = Polyline(
+        polylineId: PolylineId(polylineIdVal),
+        color: Colors.green.shade600,
+        points: polylineCoordinates,
+        width: 5,
+        consumeTapEvents: true,
+        onTap: () {
+          debugPrint("Tapped on polyline: $polylineIdVal");
+        }
+      );
+      if (mounted) {
+        _routePolylines.removeWhere((p) => p.polylineId.value == polylineIdVal);
+        _routePolylines.add(polyline);
+        setState(() {}); 
+      } else {
+         debugPrint("Not mounted, skipping setState for polyline $polylineIdVal");
+      }
+    } else {
+      debugPrint("No polyline coordinates found for $polylineIdVal (real or mock), not drawing route.");
+    }
   }
 
   @override
@@ -246,6 +448,7 @@ class _DriverDashboardScreenState extends State<DriverDashboardScreen> {
               }
             },
             markers: _markers,
+            polylines: _routePolylines, // Add polylines to the map
             myLocationEnabled: false, 
             myLocationButtonEnabled: false,
             zoomControlsEnabled: true,
