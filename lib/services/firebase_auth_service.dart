@@ -2,11 +2,20 @@ import 'package:firebase_auth/firebase_auth.dart' as fb_auth; // Aliased to avoi
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:animo/core/models/app_user.dart'; // Assuming this path from our previous structure
 
+/// Service to handle Firebase authentication operations.
+///
+/// Manages user authentication including sign-up, sign-in, and sign-out.
+/// Also handles fetching user data from Firestore and mapping between
+/// Firebase Auth models and app-specific user models.
 class FirebaseAuthService {
   final fb_auth.FirebaseAuth _firebaseAuth = fb_auth.FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
-  // Stream to listen to authentication state changes
+  /// Stream of authentication state changes.
+  ///
+  /// Returns a stream of [AppUser] objects representing the current user's
+  /// authentication state. When user signs in, the stream emits an [AppUser].
+  /// When user signs out, the stream emits null.
   Stream<AppUser?> get authStateChanges {
     return _firebaseAuth.authStateChanges().asyncMap((fb_auth.User? firebaseUser) async {
       if (firebaseUser == null) {
@@ -44,10 +53,16 @@ class FirebaseAuthService {
     });
   }
 
-  // Get current Firebase User (lightweight, from Auth SDK directly)
+  /// The current Firebase user if authenticated, or null if not.
+  ///
+  /// This is a lightweight accessor that only returns the Firebase Auth user
+  /// without fetching the full user profile from Firestore.
   fb_auth.User? get currentFirebaseUser => _firebaseAuth.currentUser;
 
-  // Get current AppUser (with data from Firestore)
+  /// Gets the current app user with full profile data.
+  ///
+  /// Fetches the current user's complete profile information from Firestore.
+  /// Returns null if user is not authenticated or if Firestore data can't be retrieved.
   Future<AppUser?> getCurrentAppUser() async {
     final fbUser = _firebaseAuth.currentUser;
     if (fbUser == null) return null;
@@ -63,7 +78,18 @@ class FirebaseAuthService {
   }
 
 
-  // Sign up with email and password
+  /// Creates a new user account with email and password.
+  ///
+  /// Registers a new user in Firebase Auth and creates a corresponding user
+  /// document in Firestore with additional profile information.
+  ///
+  /// The [email] and [password] are used for authentication.
+  /// The [displayName] is saved to the user profile.
+  /// The [role] determines the user's permissions in the app.
+  /// The optional [phoneNumber] is saved to the user profile if provided.
+  ///
+  /// Returns the newly created [AppUser] if successful, or null if registration fails.
+  /// Throws an exception with details about the failure reason.
   Future<AppUser?> signUpWithEmailAndPassword({
     required String email,
     required String password,
@@ -111,7 +137,16 @@ class FirebaseAuthService {
     }
   }
 
-  // Sign in with email and password
+  /// Signs in a user with email and password.
+  ///
+  /// Authenticates the user with Firebase Auth and fetches their full profile
+  /// from Firestore.
+  ///
+  /// The [email] and [password] are used for authentication.
+  /// The [rememberMe] parameter is not used for mobile platforms.
+  ///
+  /// Returns the authenticated [AppUser] if successful, or null if sign-in fails.
+  /// Throws an exception with details about the failure reason.
   Future<AppUser?> signInWithEmailAndPassword({
     required String email,
     required String password,
@@ -144,7 +179,9 @@ class FirebaseAuthService {
     }
   }
 
-  // Sign out
+  /// Signs out the current user.
+  ///
+  /// Ends the current user's session and clears authentication state.
   Future<void> signOut() async {
     try {
       await _firebaseAuth.signOut();

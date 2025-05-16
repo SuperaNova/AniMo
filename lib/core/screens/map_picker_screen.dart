@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' if (dart.library.html) 'dart:html' as platform;
-import 'dart:js' as js;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -10,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../env_config.dart';
+import '../services/map_picker_helper_web.dart' if (dart.library.io) '../services/map_picker_helper_mobile.dart';
 
 
 class MapPickerScreen extends StatefulWidget {
@@ -58,39 +58,21 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   void _checkGoogleMapsAvailability() {
     if (kIsWeb) {
       try {
-        // Try to access google maps in JS
-        var maps = js.context['google']?['maps'];
-        if (maps == null) {
-          print('WARNING: Google Maps not available at initialization');
-          setState(() {
-            _mapsInitialized = false;
-          });
-          
-          // Setup a listener to check when maps becomes available
-          js.context['checkGoogleMapsLoaded'] = js.allowInterop(() {
-            if (js.context['google']?['maps'] != null) {
-              print('Maps became available!');
-              if (mounted) {
-                setState(() {
-                  _mapsInitialized = true;
-                });
-              }
-              return true;
+        bool mapsAvailable = MapPickerHelper.isGoogleMapsAvailable();
+        setState(() {
+          _mapsInitialized = mapsAvailable;
+        });
+        
+        if (!mapsAvailable) {
+          // If maps not available, set up a periodic check
+          Timer.periodic(const Duration(seconds: 1), (timer) {
+            if (MapPickerHelper.isGoogleMapsAvailable()) {
+              setState(() {
+                _mapsInitialized = true;
+              });
+              timer.cancel();
             }
-            return false;
           });
-          
-          // Poll for Maps availability
-          final checkInterval = 1000; // ms
-          js.context.callMethod('setInterval', [
-            js.allowInterop(() {
-              final available = js.context.callMethod('checkGoogleMapsLoaded', []);
-              if (available == true) {
-                js.context.callMethod('clearInterval', [js.context['mapsCheckInterval']]);
-              }
-            }),
-            checkInterval
-          ]);
         }
       } catch (e) {
         print('Error checking for Google Maps: $e');

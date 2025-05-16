@@ -16,6 +16,11 @@ import 'package:animo/theme/theme.dart'; // Your custom theme
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+/// Entry point of the AniMo application.
+///
+/// Initializes environment settings, Firebase services, and date formatting
+/// before launching the app. Includes safety timeouts to ensure the app starts
+/// even if certain initialization steps fail.
 Future<void> main() async {
   try {
     // Set default locale
@@ -68,11 +73,17 @@ Future<void> main() async {
   runApp(const MyApp());
 }
 
-// Helper function to wrap any route with the ResponsiveWrapper
+/// Wraps a widget with responsive layout handling.
+///
+/// Applies the [ResponsiveWrapper] to any route to ensure consistent
+/// layout behavior across platforms.
 Widget wrapRoute(Widget screen) {
   return ResponsiveWrapper(child: screen);
 }
 
+/// Main application widget for AniMo.
+///
+/// Sets up providers, theming, routing, and the overall application structure.
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -137,12 +148,25 @@ class MyApp extends StatelessWidget {
 }
 
 /// A wrapper widget that provides fixed dimensions for web platform
-/// but allows normal responsiveness on mobile platforms
+/// but allows normal responsiveness on mobile platforms.
+///
+/// On web, creates a phone-like container with specific dimensions and styling
+/// to simulate a mobile device. On actual mobile devices, it passes through
+/// the child widget without modifications.
 class ResponsiveWrapper extends StatelessWidget {
+  /// The widget to be displayed inside the responsive container.
   final Widget child;
+  
+  /// The width of the simulated device on web platforms.
   final double webWidth;
+  
+  /// The height of the simulated device on web platforms.
   final double webHeight;
 
+  /// Creates a [ResponsiveWrapper] with the specified child and dimensions.
+  ///
+  /// The [webWidth] and [webHeight] parameters are only used when running on web
+  /// and default to iPhone 13 Pro dimensions.
   const ResponsiveWrapper({
     Key? key,
     required this.child,

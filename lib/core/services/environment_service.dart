@@ -1,11 +1,19 @@
-import 'dart:js' as js;
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import '../../env_config.dart';
 
-/// Service to handle environment-specific configurations
+// Import dart:js only on web platform
+import 'environment_service_web.dart' if (dart.library.io) 'environment_service_mobile.dart';
+
+/// Service to handle environment-specific configurations.
+///
+/// Manages initialization of platform-specific services like Firebase and
+/// Google Maps based on the current platform (web or mobile).
 class EnvironmentService {
-  /// Initialize web-specific configurations
+  /// Initializes web-specific configurations.
+  ///
+  /// Sets up Firebase configuration and loads Google Maps API for web platforms.
+  /// Silently handles initialization errors to prevent app crashes.
   static void initializeWebConfig() {
     if (kIsWeb) {
       try {
@@ -20,27 +28,11 @@ class EnvironmentService {
           'measurementId': EnvConfig.firebaseMeasurementId,
         };
         
-        // Call the JavaScript function to initialize Firebase
-        if (js.context.hasProperty('initializeFirebaseConfig')) {
-          js.context.callMethod('initializeFirebaseConfig', [firebaseConfig]);
-        } else {
-          print('Warning: initializeFirebaseConfig not found in JS context');
-          // Initialize Firebase directly if the method isn't available
-          js.context['firebase']?.callMethod('initializeApp', [js.JsObject.jsify(firebaseConfig)]);
-        }
+        // Use the platform-specific implementation
+        EnvironmentServicePlatform.initializeFirebase(firebaseConfig);
         
-        // Check if Google Maps is already loaded through script tag
-        bool mapsLoaded = js.context.hasProperty('google') && 
-                          js.context['google'] != null && 
-                          js.context['google'].hasProperty('maps');
-        
-        if (!mapsLoaded) {
-          print('Google Maps not detected, attempting to load dynamically');
-          // Only load Google Maps if not already loaded
-          _loadGoogleMapsScript();
-        } else {
-          print('Google Maps already loaded via script tag');
-        }
+        // Load Google Maps API dynamically for web only
+        EnvironmentServicePlatform.loadGoogleMaps(EnvConfig.googleMapsWebApiKey);
       } catch (e) {
         print('Error initializing web config: $e');
         // Continue app initialization even if web config fails
@@ -48,35 +40,10 @@ class EnvironmentService {
     }
   }
   
-  /// Dynamically loads the Google Maps script for web
-  static void _loadGoogleMapsScript() {
-    if (kIsWeb) {
-      try {
-        final script = js.context['document'].callMethod('createElement', ['script']);
-        script['src'] = 'https://maps.googleapis.com/maps/api/js?key=${EnvConfig.googleMapsWebApiKey}';
-        script['async'] = true;
-        script['defer'] = true;
-        script['id'] = 'google-maps-script';
-        
-        // Add an onload handler
-        script['onload'] = js.allowInterop(() {
-          print('Google Maps script loaded dynamically');
-        });
-        
-        // Add an error handler
-        script['onerror'] = js.allowInterop((error) {
-          print('Error loading Google Maps script: $error');
-        });
-        
-        js.context['document']['head'].callMethod('appendChild', [script]);
-      } catch (e) {
-        print('Error loading Google Maps script: $e');
-        // Continue without Google Maps if loading fails
-      }
-    }
-  }
-  
-  /// Initialize Android-specific configurations
+  /// Initializes Android-specific configurations.
+  ///
+  /// Performs any Android-specific setup required for the app.
+  /// Returns a [Future] that completes when initialization is done.
   static Future<void> initializeAndroidConfig() async {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       // You could add Android-specific initialization here
@@ -84,7 +51,11 @@ class EnvironmentService {
     }
   }
   
-  /// Initialize all environment configurations
+  /// Initializes all environment configurations.
+  ///
+  /// Detects the current platform and calls the appropriate initialization
+  /// methods. Handles errors gracefully to ensure app startup isn't blocked.
+  /// Returns a [Future] that completes when all initialization is complete.
   static Future<void> initialize() async {
     try {
       // Web specific initialization

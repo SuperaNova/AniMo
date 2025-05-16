@@ -1,12 +1,27 @@
-
-// Helper class for GeoPoint-like structure
+/// Represents geographical location data with optional address information.
+///
+/// Stores latitude and longitude coordinates along with additional address
+/// details such as address hint, barangay, and municipality.
 class LocationData {
+  /// Latitude coordinate in decimal degrees.
   final double latitude;
+  
+  /// Longitude coordinate in decimal degrees.
   final double longitude;
+  
+  /// Optional descriptive hint about the address (e.g., "Near the town plaza").
   final String? addressHint;
+  
+  /// Optional barangay (village/district) name where the location is situated.
   final String? barangay;
+  
+  /// Optional municipality or city name where the location is situated.
   final String? municipality;
 
+  /// Creates a new [LocationData] instance.
+  ///
+  /// The [latitude] and [longitude] parameters are required.
+  /// The [addressHint], [barangay], and [municipality] parameters are optional.
   LocationData({
     required this.latitude,
     required this.longitude,
@@ -15,7 +30,12 @@ class LocationData {
     this.municipality,
   });
 
-  // Factory constructor to create LocationData from a map (Firestore data)
+  /// Creates a [LocationData] from a map of values.
+  ///
+  /// Used to convert Firestore document data into a [LocationData] instance.
+  /// If [map] is null, returns a default location with coordinates (0,0).
+  ///
+  /// Returns a [LocationData] instance populated with data from the map.
   factory LocationData.fromMap(Map<String, dynamic>? map) {
     // Provide default values or handle null map cases gracefully
     if (map == null) {
@@ -31,7 +51,11 @@ class LocationData {
     );
   }
 
-  // Method to convert LocationData to a map (for Firestore)
+  /// Converts this location data to a map for Firestore storage.
+  ///
+  /// Creates a map representation of this object with non-null fields.
+  ///
+  /// Returns a Map containing the location data ready for Firestore.
   Map<String, dynamic> toMap() {
     return {
       'latitude': latitude,

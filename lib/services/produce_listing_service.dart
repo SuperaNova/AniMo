@@ -3,11 +3,21 @@ import 'package:flutter/cupertino.dart';
 import '../core/models/produce_listing.dart';
 // Potentially import AppUser if needed to get farmerId easily or for farmer-specific logic
 
+/// Service for managing produce listings in Firestore.
+///
+/// Provides methods for creating, reading, updating, and deleting
+/// produce listings, as well as specialized queries for different
+/// listing states and pagination.
 class ProduceListingService {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final String _collectionPath = 'produceListings';
 
-  // Create
+  /// Creates a new produce listing in Firestore.
+  ///
+  /// Takes a [listing] object containing all the produce listing information
+  /// and saves it to the database.
+  ///
+  /// Returns the ID of the newly created listing, or null if the operation failed.
   Future<String?> addProduceListing({
     required ProduceListing listing,
     // required String farmerId, // Or get from AppUser
@@ -26,7 +36,12 @@ class ProduceListingService {
     }
   }
 
-  // Read - Stream of listings for a specific farmer
+  /// Gets a stream of all produce listings for a specific farmer.
+  ///
+  /// Provides real-time updates when listings are added, modified, or removed.
+  /// Filters listings by the provided [farmerId].
+  ///
+  /// Returns a stream of [ProduceListing] lists for the specified farmer.
   Stream<List<ProduceListing>> getFarmerProduceListings(String farmerId) {
     return _firestore
         .collection(_collectionPath)
@@ -45,6 +60,12 @@ class ProduceListingService {
     });
   }
 
+  /// Gets a stream of active (available) produce listings for a specific farmer.
+  ///
+  /// Filters listings by [farmerId] and status equal to [ProduceListingStatus.available].
+  /// Results are ordered by creation date, with newest listings first.
+  ///
+  /// Returns an empty stream if [farmerId] is empty or on error.
   Stream<List<ProduceListing>> getActiveListings(String farmerId) {
     if (farmerId.isEmpty) {
       // Return an empty stream or throw an error if farmerId is not available
@@ -75,6 +96,12 @@ class ProduceListingService {
     }
   }
 
+  /// Gets a limited number of produce listings for a specific farmer.
+  ///
+  /// Filters listings by [farmerId] and limits results to the specified [limit].
+  /// Results are ordered by creation date, with newest listings first.
+  ///
+  /// Returns an empty stream if [limit] is less than or equal to 0 or on error.
   Stream<List<ProduceListing>> getFarmerProduceListingsLimited(String farmerId, int limit) {
     if (limit <= 0) {
       debugPrint("FirestoreService: Limit must be greater than 0. Returning empty stream.");
@@ -105,7 +132,11 @@ class ProduceListingService {
     }
   }
 
-  // Read - Get a single listing by ID (might be useful)
+  /// Fetches a single produce listing by its ID.
+  ///
+  /// Retrieves the listing document with the specified [listingId].
+  ///
+  /// Returns the [ProduceListing] if found, or null if not found or on error.
   Future<ProduceListing?> getProduceListingById(String listingId) async {
     try {
       final DocumentSnapshot<Map<String, dynamic>> doc =
@@ -120,7 +151,12 @@ class ProduceListingService {
     }
   }
   
-  // Update
+  /// Updates an existing produce listing.
+  ///
+  /// Updates the listing with ID [listingId] with the specified [updates].
+  /// The [updates] map should contain the fields to update and their new values.
+  ///
+  /// Returns true if the update was successful, false otherwise.
   Future<bool> updateProduceListing({
     required String listingId,
     required Map<String, dynamic> updates, // Or pass a full ProduceListing object
@@ -139,7 +175,12 @@ class ProduceListingService {
     }
   }
 
-  // Update specific fields, e.g., status or quantity
+  /// Updates the status of a produce listing.
+  ///
+  /// Changes the status of the listing with ID [listingId] to the specified [status].
+  /// Also updates the lastUpdated timestamp.
+  ///
+  /// Returns true if the update was successful, false otherwise.
   Future<bool> updateListingStatus(String listingId, ProduceListingStatus status) async {
     return await updateProduceListing(
       listingId: listingId,
@@ -150,6 +191,14 @@ class ProduceListingService {
     );
   }
 
+  /// Updates the quantity fields of a produce listing.
+  ///
+  /// Updates one or both quantity fields of the listing with ID [listingId].
+  /// The [quantityCommitted] is the amount reserved for orders.
+  /// The [quantitySoldAndDelivered] is the amount already delivered to buyers.
+  ///
+  /// Returns true if the update was successful or if no changes were needed,
+  /// false if the update failed.
   Future<bool> updateListingQuantities(String listingId, {double? quantityCommitted, double? quantitySoldAndDelivered}) async {
     Map<String, dynamic> updates = {'lastUpdated': Timestamp.now()};
     if (quantityCommitted != null) {
@@ -164,7 +213,12 @@ class ProduceListingService {
   }
 
 
-  // Delete (Soft delete by updating status)
+  /// Soft-deletes a produce listing.
+  ///
+  /// Changes the status of the listing with ID [listingId] to delisted
+  /// rather than actually removing it from the database.
+  ///
+  /// Returns true if the update was successful, false otherwise.
   Future<bool> deleteProduceListing(String listingId) async {
      return await updateListingStatus(listingId, ProduceListingStatus.delisted);
   }
