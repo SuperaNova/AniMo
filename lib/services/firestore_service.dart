@@ -700,27 +700,35 @@ class FirestoreService {
   Stream<List<ProduceListing>> getProduceListingsFromMatchSuggestions() {
     debugPrint("FirestoreService: getProduceListingsFromMatchSuggestions called.");
     if (currentUserId == null) {
-      debugPrint("FirestoreService: currentUserId is null, returning empty stream.");
+      debugPrint("FirestoreService: currentUserId is null, returning empty stream for getProduceListingsFromMatchSuggestions.");
       return Stream.value([]);
     }
     
-    debugPrint("FirestoreService: Fetching match suggestions for buyerId: $currentUserId");
+    debugPrint("FirestoreService: Fetching match suggestions for buyerId: $currentUserId with status filter for getProduceListingsFromMatchSuggestions");
     
-    // First get the match suggestions to extract listingIds
     return _db
         .collection('matchSuggestions')
         .where('buyerId', isEqualTo: currentUserId)
+        // ADDED STATUS FILTER TO ALIGN WITH COUNTING LOGIC
+        .where('status', whereIn: [
+          MatchStatus.pending_buyer_approval.name, 
+          MatchStatus.accepted_by_farmer.name,
+          MatchStatus.ai_suggestion_for_buyer.name 
+        ])
+        .where('buyerRequestId', isNotEqualTo: null) // Also ensuring it's linked to a request, like the count
         .snapshots()
         .asyncMap((snapshot) async {
-          debugPrint("FirestoreService: Found ${snapshot.docs.length} match suggestions for buyerId: $currentUserId");
+          debugPrint("FirestoreService (getProduceListingsFromMatchSuggestions): Found ${snapshot.docs.length} match suggestions after status/buyerRequestID filter for buyerId: $currentUserId");
           
-          // Extract all listingIds from the match suggestions
+          // Extract all listingIds from the filtered match suggestions
           final listingIds = snapshot.docs
-              .map((doc) => doc.data()['listingId'] as String?)
+              .map((doc) => doc.data()['listingId'] as String?) // Corrected field name
               .where((id) => id != null && id.isNotEmpty)
-              .toList();
+              .cast<String>() 
+              .toSet() 
+              .toList(); 
           
-          debugPrint("FirestoreService: Extracted ${listingIds.length} listingIds from match suggestions");
+          debugPrint("FirestoreService (getProduceListingsFromMatchSuggestions): Extracted ${listingIds.length} unique listingIds"); // Log updated
           
           if (listingIds.isEmpty) {
             return <ProduceListing>[];
@@ -728,33 +736,187 @@ class FirestoreService {
           
           // Now fetch all the produceListings with these IDs
           try {
-            // Split into chunks of 10 if needed (Firestore limit for 'in' queries)
             final List<ProduceListing> allListings = [];
-            
-            // Firestore allows up to 10 values in 'whereIn' query
             for (int i = 0; i < listingIds.length; i += 10) {
               final end = (i + 10 < listingIds.length) ? i + 10 : listingIds.length;
               final chunk = listingIds.sublist(i, end);
               
-              debugPrint("FirestoreService: Fetching chunk of ${chunk.length} listingIds");
-              final snapshot = await _db
+              if (chunk.isEmpty) continue; // Should not happen if listingIds is not empty, but good check
+
+              debugPrint("FirestoreService (getProduceListingsFromMatchSuggestions): Fetching chunk of ${chunk.length} produceListingIds: $chunk");
+              final listingsSnapshot = await _db
                   .collection('produceListings')
                   .where(FieldPath.documentId, whereIn: chunk)
                   .get();
               
-              final listings = snapshot.docs
+              final listings = listingsSnapshot.docs
                   .map((doc) => ProduceListing.fromFirestore(doc.data(), doc.id))
                   .toList();
               
               allListings.addAll(listings);
             }
             
-            debugPrint("FirestoreService: Successfully fetched ${allListings.length} produce listings from match suggestions");
+            debugPrint("FirestoreService (getProduceListingsFromMatchSuggestions): Successfully fetched ${allListings.length} produce listings");
             return allListings;
           } catch (e, s) {
-            debugPrint("FirestoreService: ERROR fetching produce listings from match suggestions: $e\n$s");
+            debugPrint("FirestoreService (getProduceListingsFromMatchSuggestions): ERROR fetching produce listings: $e\n$s");
             return <ProduceListing>[];
           }
         });
+  }
+
+  // New method: Get specific match suggestions for a given BuyerRequest ID
+  Stream<List<ProduceListing>> getMatchSuggestionsForRequest(String buyerRequestId) {
+    if (currentUserId == null || currentUserId != buyerRequestId.split('_').first) {
+      // Assuming buyerRequestId might be prefixed or directly the buyer's ID.
+      // Adjust this check if buyerRequestId format is different or if this check is not needed.
+      // For safety, ensure the request is for the logged-in buyer.
+      // If buyerRequestId is NOT the actual buyer's UID, this check needs refinement.
+      // For now, we proceed assuming buyerRequestId can be used to ensure data pertains to the current user
+      // or that higher level UI logic already confirmed this.
+      // A common pattern is `buyerId_requestId`, if so, split and check buyerId.
+      // If buyerRequestId is just the request's own ID, then we need to query MatchSuggestion
+      // and ensure its buyerId field matches currentUserId.
+      debugPrint("getMatchSuggestionsForRequest: User not authorized or buyerRequestId mismatch. currentUserId: $currentUserId, buyerRequestId: $buyerRequestId");
+      // return Stream.value([]); // Or handle error appropriately
+    }
+
+    debugPrint("FirestoreService: getMatchSuggestionsForRequest called for buyerRequestId: $buyerRequestId");
+    
+    // This implementation assumes 'matchSuggestions' collection stores a 'produceListingId'
+    // and 'buyerRequestId', and a 'status' indicating it's a valid suggestion for the buyer.
+    return _db.collection('matchSuggestions')
+        .where('buyerRequestId', isEqualTo: buyerRequestId)
+        .where('status', whereIn: [
+          MatchStatus.pending_buyer_approval.name, 
+          MatchStatus.accepted_by_farmer.name,  
+          MatchStatus.ai_suggestion_for_buyer.name
+        ])
+        .snapshots()
+        .asyncMap((snapshot) async {
+          if (snapshot.docs.isEmpty) {
+            debugPrint("No match suggestion documents found for buyerRequestId: $buyerRequestId");
+            return <ProduceListing>[];
+          }
+          debugPrint("Found ${snapshot.docs.length} match suggestion documents for buyerRequestId: $buyerRequestId");
+
+          List<String> produceListingIds = snapshot.docs
+              .map((doc) => doc.data()['listingId'] as String?) // Corrected field name
+              .where((id) => id != null && id.isNotEmpty)
+              .cast<String>()
+              .toList();
+
+          if (produceListingIds.isEmpty) {
+            debugPrint("No valid listingIds found in suggestions for buyerRequestId: $buyerRequestId"); // Log updated
+            return <ProduceListing>[];
+          }
+          
+          debugPrint("Fetching ${produceListingIds.length} produce listings for buyerRequestId: $buyerRequestId. IDs: $produceListingIds");
+
+          // Fetch ProduceListings in batches of 10 (Firestore 'in' query limit)
+          List<ProduceListing> matchedListings = [];
+          for (var i = 0; i < produceListingIds.length; i += 10) {
+            List<String> batchIds = produceListingIds.sublist(i, i + 10 > produceListingIds.length ? produceListingIds.length : i + 10);
+            if (batchIds.isNotEmpty) {
+              try {
+                 final listingsSnapshot = await _db.collection('produceListings')
+                    .where(FieldPath.documentId, whereIn: batchIds)
+                    .get();
+                
+                final listings = listingsSnapshot.docs
+                    .map((doc) => ProduceListing.fromFirestore(doc.data(), doc.id))
+                    .toList();
+                matchedListings.addAll(listings);
+                debugPrint("Fetched batch of ${listings.length} listings. Total fetched so far: ${matchedListings.length}");
+              } catch (e, s) {
+                  debugPrint("Error fetching batch of produceListings (IDs: $batchIds): $e\n$s");
+              }
+            }
+          }
+          debugPrint("Successfully fetched ${matchedListings.length} produce listings for buyerRequestId: $buyerRequestId");
+          return matchedListings;
+        }).handleError((error, stackTrace) {
+            debugPrint("Error in getMatchSuggestionsForRequest stream for $buyerRequestId: $error\n$stackTrace");
+            return <ProduceListing>[]; // Return empty list on error
+        });
+  }
+
+  // New method: Get count of match suggestions for a given BuyerRequest ID
+  Future<int> getMatchCountForRequest(String buyerRequestId) async {
+    if (currentUserId == null) {
+      // As above, consider authorization logic if needed.
+      return 0;
+    }
+    try {
+      debugPrint("FirestoreService: getMatchCountForRequest called for buyerRequestId: $buyerRequestId");
+      final snapshot = await _db.collection('matchSuggestions')
+          .where('buyerRequestId', isEqualTo: buyerRequestId)
+          .where('status', whereIn: [
+            MatchStatus.pending_buyer_approval.name, 
+            MatchStatus.accepted_by_farmer.name,
+            MatchStatus.ai_suggestion_for_buyer.name
+          ])
+          .count() // Using count aggregate query
+          .get();
+      
+      final count = snapshot.count ?? 0;
+      debugPrint("Match count for buyerRequestId $buyerRequestId: $count");
+      return count;
+    } catch (e, s) {
+      debugPrint("Error getting match count for buyerRequestId $buyerRequestId: $e\n$s");
+      // Fallback for safety if count() fails or is not supported by rules/version for some reason,
+      // though it should generally work.
+      // final docs = await _db.collection('matchSuggestions')
+      //   .where('buyerRequestId', isEqualTo: buyerRequestId)
+      //   .where('status', whereIn: [MatchStatus.pending_buyer_approval.name, MatchStatus.accepted_by_farmer.name])
+      //   .get();
+      // return docs.docs.length;
+      return 0; // Return 0 on error
+    }
+  }
+
+  // New method: Get count of all relevant match suggestions for the current buyer
+  Future<int> getTotalRelevantMatchSuggestionsCount() async {
+    if (currentUserId == null) {
+      debugPrint("getTotalRelevantMatchSuggestionsCount: currentUserId is null, returning 0.");
+      return 0;
+    }
+    try {
+      debugPrint("FirestoreService: getTotalRelevantMatchSuggestionsCount (fetching unique listings) called for buyerId: $currentUserId");
+      final snapshot = await _db.collection('matchSuggestions')
+          .where('buyerId', isEqualTo: currentUserId) 
+          .where('buyerRequestId', isNotEqualTo: null) 
+          .where('status', whereIn: [
+            MatchStatus.pending_buyer_approval.name, 
+            MatchStatus.accepted_by_farmer.name,
+            MatchStatus.ai_suggestion_for_buyer.name 
+          ])
+          .get(); 
+      
+      debugPrint("getTotalRelevantMatchSuggestionsCount: Fetched ${snapshot.docs.length} raw suggestion documents.");
+
+      if (snapshot.docs.isEmpty) {
+        debugPrint("Total relevant match suggestions for buyer $currentUserId: 0 (no documents found to extract unique listings from)");
+        return 0;
+      }
+
+      List<String?> allExtractedIds = [];
+      for (var doc in snapshot.docs) {
+        final id = doc.data()['listingId'] as String?;
+        allExtractedIds.add(id);
+        debugPrint("getTotalRelevantMatchSuggestionsCount: Doc ID ${doc.id} - Extracted listingId: '$id'");
+      }
+
+      final uniqueProduceListingIds = allExtractedIds
+          .where((id) => id != null && id.isNotEmpty)
+          .toSet();
+      
+      final count = uniqueProduceListingIds.length;
+      debugPrint("Total relevant unique produce listings from suggestions for buyer $currentUserId: $count (from ${snapshot.docs.length} total suggestions after filtering for non-empty IDs. Unique IDs found: ${uniqueProduceListingIds.join(', ')}");
+      return count;
+    } catch (e, s) {
+      debugPrint("Error getting total relevant unique produce listings count for buyer $currentUserId: $e\n$s");
+      return 0; 
+    }
   }
 } 

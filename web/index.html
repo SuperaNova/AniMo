@@ -16,26 +16,42 @@
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="AniMo App">
+  <meta name="description" content="AniMo - Connecting Farmers, Buyers, and Drivers">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="animo">
+  <meta name="apple-mobile-web-app-title" content="AniMo">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png">
 
-  <title>animo</title>
+  <title>AniMo</title>
   <link rel="manifest" href="manifest.json">
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAjewiCAaT7BJv3Y2LSQTI4H1iNlARx34I" defer></script>
   
+  <!-- IMPORTANT: Pre-load Google Maps API directly, don't rely on dynamic loading -->
+  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZMCLQ76i4YjDC5-op70Y380kPBYGV4U8" async defer></script>
   
   <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
   
-  
-  
+  <!-- Error tracking script -->
+  <script>
+    window.addEventListener('error', function(e) {
+      console.error('Global error:', e.message, e.filename, e.lineno);
+    });
+    
+    // Safety timeout to remove splash screen if Flutter fails to initialize
+    setTimeout(function() {
+      var splash = document.getElementById('splash');
+      if (splash) {
+        console.log("Safety timeout: removing splash screen after 10 seconds");
+        splash.remove();
+        var splashBranding = document.getElementById('splash-branding');
+        if (splashBranding) splashBranding.remove();
+      }
+    }, 10000); // 10 seconds safety timeout
+  </script>
   
   <style id="splash-screen-style">
     html {
@@ -46,7 +62,7 @@
       margin: 0;
       min-height: 100%;
       background-color: #f7f3ec;
-          background-size: 100% 100%;
+      background-size: 100% 100%;
     }
 
     .center {
@@ -97,9 +113,16 @@
   </style>
   <script id="splash-screen-script">
     function removeSplashFromWeb() {
-      document.getElementById("splash")?.remove();
-      document.getElementById("splash-branding")?.remove();
-      document.body.style.background = "transparent";
+      try {
+        var splash = document.getElementById("splash");
+        var splashBranding = document.getElementById("splash-branding");
+        if (splash) splash.remove();
+        if (splashBranding) splashBranding.remove();
+        document.body.style.background = "transparent";
+        console.log("Splash screen removed successfully");
+      } catch (e) {
+        console.error("Error removing splash screen:", e);
+      }
     }
   </script>
 </head>
@@ -117,33 +140,45 @@
   <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-firestore-compat.js"></script>
   <!-- Add other SDKs as needed e.g. firebase-storage-compat.js -->
 
+  <!-- Firebase configuration will be provided by Flutter -->
   <script>
-    // Your web app's Firebase configuration
-    // This configuration is from your lib/firebase_options.dart
-    var firebaseConfig = {
-      apiKey: "AIzaSyAR5DVlegGD2Nse7_YUY9ErD22-wzvgDX0",
-      authDomain: "animo-9fffb.firebaseapp.com",
-      projectId: "animo-9fffb",
-      storageBucket: "animo-9fffb.firebasestorage.app",
-      messagingSenderId: "861879318023",
-      appId: "1:861879318023:web:1c758fa8d2192fd72f1ca2",
-      measurementId: "G-XJ8BBLJ769"
+    // Firebase configuration will be initialized by Flutter
+    var firebaseConfig = null;
+    window.initializeFirebaseConfig = function(config) {
+      try {
+        firebaseConfig = config;
+        if (firebaseConfig && firebase) {
+          // Initialize Firebase
+          firebase.initializeApp(firebaseConfig);
+          console.log("Firebase initialized successfully");
+        } else {
+          console.error("Missing Firebase config or Firebase library not loaded");
+        }
+      } catch (e) {
+        console.error("Error initializing Firebase:", e);
+      }
     };
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
   </script>
 
   <script src="flutter_bootstrap.js" async=""></script>
 
   <script>
+    // Check if loading completes
     window.addEventListener('load', function() {
+      console.log("Window loaded event fired");
+      // Log Google Maps status
       if (window.google && window.google.maps) {
         console.log('SUCCESS: window.google.maps is available!');
       } else if (window.google) {
-        console.error('ERROR: window.google is available, but window.google.maps is NOT.');
+        console.warn('WARNING: window.google is available, but window.google.maps is NOT.');
       } else {
-        console.error('ERROR: window.google is NOT available.');
+        console.warn('WARNING: window.google is NOT available.');
       }
+    });
+    
+    // Check for flutter initialization
+    window.addEventListener('flutter-first-frame', function() {
+      console.log("Flutter application rendered its first frame");
     });
   </script>
 </body></html>

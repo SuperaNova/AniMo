@@ -7,7 +7,17 @@ import 'package:animo/services/firebase_auth_service.dart'; // Your AuthService
 import 'package:animo/features/auth/screens/landing_screen.dart';
 import 'package:animo/features/driver/screens/driver_dashboard_screen.dart';
 
+/// Widget that handles authentication state and routing.
+///
+/// Routes users to different screens based on their authentication state and role:
+/// - Unauthenticated users are directed to the landing screen
+/// - Authenticated users are directed to their role-specific dashboard
+/// - Users with unknown roles are shown an error screen
+///
+/// This widget listens to authentication state changes and automatically
+/// updates the UI when a user signs in or out.
 class AuthWrapper extends StatelessWidget {
+  /// Creates an authentication wrapper widget.
   const AuthWrapper({super.key});
 
   @override

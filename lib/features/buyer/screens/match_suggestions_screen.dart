@@ -7,19 +7,30 @@ import 'package:animo/features/buyer/screens/produce_listing_detail_screen.dart'
 
 class MatchSuggestionsScreen extends StatelessWidget {
   static const String routeName = '/buyer-match-suggestions';
+  final String? buyerRequestId;
+  final String? buyerRequestName;
   
-  const MatchSuggestionsScreen({super.key});
+  const MatchSuggestionsScreen({super.key, this.buyerRequestId, this.buyerRequestName});
 
   @override
   Widget build(BuildContext context) {
     final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final bool isSpecificRequest = buyerRequestId != null && buyerRequestId!.isNotEmpty;
+    String appBarTitle = 'Match Suggestions';
+    if (isSpecificRequest && buyerRequestName != null && buyerRequestName!.isNotEmpty) {
+      appBarTitle = 'Matches for: $buyerRequestName';
+    } else if (isSpecificRequest) {
+      appBarTitle = 'Matches for Your Request';
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Match Suggestions'),
+        title: Text(appBarTitle),
       ),
       body: StreamBuilder<List<ProduceListing>>(
-        stream: firestoreService.getProduceListingsFromMatchSuggestions(),
+        stream: isSpecificRequest 
+                  ? firestoreService.getMatchSuggestionsForRequest(buyerRequestId!) 
+                  : firestoreService.getProduceListingsFromMatchSuggestions(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -32,11 +43,13 @@ class MatchSuggestionsScreen extends StatelessWidget {
           }
           
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            debugPrint("MatchSuggestionsScreen: Snapshot has no data or is empty.");
-            return const Center(
+            debugPrint("MatchSuggestionsScreen: Snapshot has no data or is empty. Specific request: $isSpecificRequest");
+            return Center(
               child: Padding(
-                padding: EdgeInsets.all(16.0),
-                child: Text('No match suggestions available at the moment.'),
+                padding: const EdgeInsets.all(16.0),
+                child: Text(isSpecificRequest 
+                  ? 'No specific matches found for this request right now.' 
+                  : 'No match suggestions available at the moment.'),
               )
             );
           }

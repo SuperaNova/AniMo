@@ -8,12 +8,14 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
+import '../../env_config.dart';
+import '../services/map_picker_helper_web.dart' if (dart.library.io) '../services/map_picker_helper_mobile.dart';
 
 
 class MapPickerScreen extends StatefulWidget {
   final LatLng? initialPosition;
   static const LatLng defaultInitialPosition = LatLng(10.3157, 123.8854); 
-  static const String apiKey = 'AIzaSyAjewiCAaT7BJv3Y2LSQTI4H1iNlARx34I';
+  static const String apiKey = EnvConfig.googleMapsWebApiKey;
 
   const MapPickerScreen({super.key, this.initialPosition});
 
@@ -33,10 +35,17 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
   CameraPosition? _currentCameraPosition;
   Timer? _debounceTimer;
   String? _selectedStreet;
+  bool _mapsInitialized = true; // Optimistically assume maps will load
 
   @override
   void initState() {
     super.initState();
+    
+    // Check if Google Maps is available (for web)
+    if (kIsWeb) {
+      _checkGoogleMapsAvailability();
+    }
+    
     if (widget.initialPosition != null) {
       _moveCameraTo(widget.initialPosition!, zoom: 16.0);
       _isGettingCurrentLocation = false;
@@ -45,6 +54,35 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
     }
   }
 
+  // Check if Google Maps API is loaded
+  void _checkGoogleMapsAvailability() {
+    if (kIsWeb) {
+      try {
+        bool mapsAvailable = MapPickerHelper.isGoogleMapsAvailable();
+        setState(() {
+          _mapsInitialized = mapsAvailable;
+        });
+        
+        if (!mapsAvailable) {
+          // If maps not available, set up a periodic check
+          Timer.periodic(const Duration(seconds: 1), (timer) {
+            if (MapPickerHelper.isGoogleMapsAvailable()) {
+              setState(() {
+                _mapsInitialized = true;
+              });
+              timer.cancel();
+            }
+          });
+        }
+      } catch (e) {
+        print('Error checking for Google Maps: $e');
+        setState(() {
+          _mapsInitialized = false;
+        });
+      }
+    }
+  }
+  
   @override
   void dispose() {
     _debounceTimer?.cancel();
@@ -278,59 +316,96 @@ class _MapPickerScreenState extends State<MapPickerScreen> {
           )
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Stack(
-              children: [
-                GoogleMap(
-                  onMapCreated: _onMapCreated,
-                  initialCameraPosition: _currentCameraPosition ?? CameraPosition(
-                      target: widget.initialPosition ?? MapPickerScreen.defaultInitialPosition,
-                      zoom: 14.0),
-                  onCameraMove: _onCameraMove,
-                  onCameraIdle: _onCameraIdle,
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  markers: {},
-                  padding: EdgeInsets.only(bottom: _isLoadingAddress ? 80 : 10),
-                ),
-                const Align(
-                  alignment: Alignment.center,
-                  child: Icon(Icons.location_pin, size: 50),
-                ),
-                if (_isGettingCurrentLocation)
-                  const Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [CircularProgressIndicator(), SizedBox(height: 8), Text('Getting current location...')],
-                    ),
+      body: !_mapsInitialized 
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.map_outlined, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  const Text('Google Maps is not available', 
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  const Text('Please check your internet connection or try again later.',
+                    textAlign: TextAlign.center),
+                  const SizedBox(height: 24),
+                  ElevatedButton(
+                    onPressed: () {
+                      _checkGoogleMapsAvailability();
+                      if (_mapsInitialized) {
+                        setState(() {});
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Maps still not available. Please try again later.'))
+                        );
+                      }
+                    },
+                    child: const Text('Try Again'),
                   ),
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    color: Colors.black.withOpacity(0.7),
-                    child: Text(
-                      _isLoadingAddress ? 'Fetching address...' : _selectedAddress,
-                      style: const TextStyle(color: Colors.white),
-                      textAlign: TextAlign.center,
-                      maxLines: 3,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                  const SizedBox(height: 16),
+                  OutlinedButton(
+                    onPressed: () {
+                      // Just return without coordinates
+                      Navigator.of(context).pop(null);
+                    },
+                    child: const Text('Go Back'),
+                  ),
+                ],
+              ),
+            )
+          : Column(
+              children: [
+                Expanded(
+                  child: Stack(
+                    children: [
+                      GoogleMap(
+                        onMapCreated: _onMapCreated,
+                        initialCameraPosition: _currentCameraPosition ?? CameraPosition(
+                            target: widget.initialPosition ?? MapPickerScreen.defaultInitialPosition,
+                            zoom: 14.0),
+                        onCameraMove: _onCameraMove,
+                        onCameraIdle: _onCameraIdle,
+                        myLocationEnabled: true,
+                        myLocationButtonEnabled: true,
+                        markers: {},
+                        padding: EdgeInsets.only(bottom: _isLoadingAddress ? 80 : 10),
+                      ),
+                      const Align(
+                        alignment: Alignment.center,
+                        child: Icon(Icons.location_pin, size: 50),
+                      ),
+                      if (_isGettingCurrentLocation)
+                        const Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [CircularProgressIndicator(), SizedBox(height: 8), Text('Getting current location...')],
+                          ),
+                        ),
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          color: Colors.black.withOpacity(0.7),
+                          child: Text(
+                            _isLoadingAddress ? 'Fetching address...' : _selectedAddress,
+                            style: const TextStyle(color: Colors.white),
+                            textAlign: TextAlign.center,
+                            maxLines: 3,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: _mapsInitialized ? FloatingActionButton(
         onPressed: _getCurrentLocation,
         child: const Icon(Icons.my_location),
-      ),
+      ) : null,
     );
   }
 }

@@ -1,10 +1,22 @@
 import "package:flutter/material.dart";
 
+/// Material Design theme configuration for the AniMo application.
+///
+/// Provides consistent theming across the application with support for
+/// light and dark themes, as well as different contrast levels.
 class MaterialTheme {
+  /// The text theme to use as a base for the application.
   final TextTheme textTheme;
 
+  /// Creates a new [MaterialTheme] with the specified text theme.
   const MaterialTheme(this.textTheme);
 
+  /// Creates the light color scheme for the application.
+  ///
+  /// Defines a complete set of colors for the light theme, including
+  /// primary, secondary, tertiary, surface, and other semantic colors.
+  ///
+  /// Returns a [ColorScheme] configured for light mode.
   static ColorScheme lightScheme() {
     return const ColorScheme(
       brightness: Brightness.light,
@@ -56,10 +68,21 @@ class MaterialTheme {
     );
   }
 
+  /// Creates the light theme for the application.
+  ///
+  /// Uses the light color scheme to configure a complete [ThemeData] object.
+  ///
+  /// Returns a [ThemeData] configured for light mode.
   ThemeData light() {
     return theme(lightScheme());
   }
 
+  /// Creates the light medium contrast color scheme for the application.
+  ///
+  /// Defines colors with increased contrast for improved accessibility
+  /// while maintaining the light theme aesthetic.
+  ///
+  /// Returns a [ColorScheme] configured for light mode with medium contrast.
   static ColorScheme lightMediumContrastScheme() {
     return const ColorScheme(
       brightness: Brightness.light,
@@ -115,6 +138,12 @@ class MaterialTheme {
     return theme(lightMediumContrastScheme());
   }
 
+  /// Creates the light high contrast color scheme for the application.
+  ///
+  /// Defines colors with high contrast for improved accessibility
+  /// while maintaining the light theme aesthetic.
+  ///
+  /// Returns a [ColorScheme] configured for light mode with high contrast.
   static ColorScheme lightHighContrastScheme() {
     return const ColorScheme(
       brightness: Brightness.light,
@@ -170,6 +199,12 @@ class MaterialTheme {
     return theme(lightHighContrastScheme());
   }
 
+  /// Creates the dark color scheme for the application.
+  ///
+  /// Defines a complete set of colors for the dark theme, including
+  /// primary, secondary, tertiary, surface, and other semantic colors.
+  ///
+  /// Returns a [ColorScheme] configured for dark mode.
   static ColorScheme darkScheme() {
     return const ColorScheme(
       brightness: Brightness.dark,
@@ -221,10 +256,21 @@ class MaterialTheme {
     );
   }
 
+  /// Creates the dark theme for the application.
+  ///
+  /// Uses the dark color scheme to configure a complete [ThemeData] object.
+  ///
+  /// Returns a [ThemeData] configured for dark mode.
   ThemeData dark() {
     return theme(darkScheme());
   }
 
+  /// Creates the dark medium contrast color scheme for the application.
+  ///
+  /// Defines colors with increased contrast for improved accessibility
+  /// while maintaining the dark theme aesthetic.
+  ///
+  /// Returns a [ColorScheme] configured for dark mode with medium contrast.
   static ColorScheme darkMediumContrastScheme() {
     return const ColorScheme(
       brightness: Brightness.dark,
@@ -280,6 +326,12 @@ class MaterialTheme {
     return theme(darkMediumContrastScheme());
   }
 
+  /// Creates the dark high contrast color scheme for the application.
+  ///
+  /// Defines colors with high contrast for improved accessibility
+  /// while maintaining the dark theme aesthetic.
+  ///
+  /// Returns a [ColorScheme] configured for dark mode with high contrast.
   static ColorScheme darkHighContrastScheme() {
     return const ColorScheme(
       brightness: Brightness.dark,
@@ -335,7 +387,6 @@ class MaterialTheme {
     return theme(darkHighContrastScheme());
   }
 
-
   ThemeData theme(ColorScheme colorScheme) => ThemeData(
      useMaterial3: true,
      brightness: colorScheme.brightness,
@@ -347,7 +398,6 @@ class MaterialTheme {
      scaffoldBackgroundColor: colorScheme.background,
      canvasColor: colorScheme.surface,
   );
-
 
   List<ExtendedColor> get extendedColors => [
   ];

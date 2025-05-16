@@ -8,17 +8,36 @@ import 'package:flutter/foundation.dart'; // For debugPrint
 
 import 'package:flutter/material.dart';
 
+/// Categories of produce that can be listed in the application.
+///
+/// Used to organize and filter produce listings based on their type.
+/// Each category has a display name and associated styling.
 enum ProduceCategory {
+  /// Fresh vegetables from farms.
   vegetable('Vegetable'),
+  
+  /// Fresh fruits from farms.
   fruit('Fruit'),
+  
+  /// Herbs and spices.
   herb('Herb'),
+  
+  /// Grain crops like rice, corn, wheat, etc.
   grain('Grain'),
+  
+  /// Products that have undergone processing, like dried fruits.
   processed('Processed Farm Product'),
+  
+  /// Any produce that doesn't fit into the other categories.
   other('Other');
 
+  /// Creates a produce category with a display name.
   const ProduceCategory(this.displayName);
+  
+  /// Human-readable name for this category.
   final String displayName;
 
+  /// Returns a color associated with this category for UI styling.
   Color get color {
     switch (this) {
       case ProduceCategory.vegetable:
@@ -36,7 +55,9 @@ enum ProduceCategory {
     }
   }
 
-  // Helper to get an icon for a produce category for ActivityItem
+  /// Returns an icon representing this category.
+  ///
+  /// Used for visual representation in list items and activity feeds.
   IconData get icon {
     switch (this) {
       case ProduceCategory.vegetable:
@@ -55,22 +76,44 @@ enum ProduceCategory {
   }
 }
 
+/// Status of a produce listing in the marketplace.
+///
+/// Tracks the lifecycle state of a listing from creation to completion.
 enum ProduceListingStatus {
+  /// Listing is active and produce is available for purchase.
   available('Available'),
-  // pending_confirmation ('Pending Confirmation'), // If a match is made but not yet an order
-  committed('Committed to Order'), // Part or all quantity is committed
-  sold_out('Sold Out'), // All quantity sold and delivered
+  
+  /// Part or all of the quantity is committed to pending orders.
+  committed('Committed to Order'),
+  
+  /// All quantity has been sold and delivered.
+  sold_out('Sold Out'),
+  
+  /// Listing has expired (based on expiry date).
   expired('Expired'),
+  
+  /// Listing has been manually removed by the farmer.
   delisted('Delisted by Farmer');
 
+  /// Creates a listing status with a display name.
   const ProduceListingStatus(this.displayName);
+  
+  /// Human-readable name for this status.
   final String displayName;
 }
 
+/// Converts a [ProduceListingStatus] to its string representation.
+///
+/// Returns the name of the status enum value.
 String produceListingStatusToString(ProduceListingStatus status) {
   return status.name;
 }
 
+/// Converts a string to a [ProduceListingStatus].
+///
+/// The [statusString] should match the name of a status enum value.
+/// Returns the status value matching the string, or [ProduceListingStatus.available]
+/// if no match is found.
 ProduceListingStatus produceListingStatusFromString(String? statusString) {
   return ProduceListingStatus.values.firstWhere(
         (e) => e.name == statusString,
@@ -78,30 +121,83 @@ ProduceListingStatus produceListingStatusFromString(String? statusString) {
       );
 }
 
+/// Represents a produce listing in the marketplace.
+///
+/// Contains all information about a specific produce item being sold by a farmer,
+/// including details about the produce, pricing, quantity, location, and current status.
 class ProduceListing {
+  /// Unique identifier for the listing.
   final String? id;
+  
+  /// ID of the farmer who created the listing.
   final String farmerId;
-  final String? farmerName; // Denormalized for easier display
+  
+  /// Name of the farmer (denormalized for easier display).
+  final String? farmerName;
+  
+  /// Name of the produce item being sold.
   final String produceName;
+  
+  /// Category of the produce.
   final ProduceCategory produceCategory;
-  final String? customProduceCategory; // If produceCategory is 'other'
-  final double quantity; // Current available quantity
-  final double initialQuantity; // Original quantity when listed
-  final String unit; // e.g., kg, piece, bundle, sack, kaing
-  final double? estimatedWeightKgPerUnit; // For non-standard units like 'sack' or 'piece'
+  
+  /// Custom category name if [produceCategory] is [ProduceCategory.other].
+  final String? customProduceCategory;
+  
+  /// Current available quantity of the produce.
+  final double quantity;
+  
+  /// Original quantity when the produce was first listed.
+  final double initialQuantity;
+  
+  /// Unit of measurement (e.g., kg, piece, bundle, sack, kaing).
+  final String unit;
+  
+  /// Estimated weight in kilograms per unit for non-standard units.
+  final double? estimatedWeightKgPerUnit;
+  
+  /// Price per unit of the produce.
   final double pricePerUnit;
+  
+  /// Currency of the price (e.g., PHP).
   final String currency;
+  
+  /// Additional description or details about the produce.
   final String? description;
+  
+  /// Location where the produce can be picked up.
   final LocationData pickupLocation;
+  
+  /// URLs to photos of the produce.
   final List<String> photoUrls;
+  
+  /// Current status of the listing in the marketplace.
   final ProduceListingStatus status;
-  final DateTime? harvestTimestamp; // Optional
+  
+  /// Date when the produce was harvested.
+  final DateTime? harvestTimestamp;
+  
+  /// Date when the listing will expire or is no longer valid.
   final DateTime? expiryTimestamp;
+  
+  /// Date when the listing was created.
   final DateTime createdAt;
+  
+  /// Date when the listing was last updated.
   final DateTime lastUpdated;
-  final double quantityCommitted; // Quantity tied up in active orders/accepted matches
-  final double quantitySoldAndDelivered; // Quantity successfully sold and delivered
+  
+  /// Quantity tied up in active orders or accepted matches.
+  final double quantityCommitted;
+  
+  /// Quantity that has been successfully sold and delivered.
+  final double quantitySoldAndDelivered;
 
+  /// Creates a new [ProduceListing].
+  ///
+  /// The [id] is optional and typically assigned by Firestore.
+  /// The [farmerId], [produceName], [produceCategory], [quantity], [initialQuantity],
+  /// [unit], [pricePerUnit], [currency], [pickupLocation], [status], [createdAt],
+  /// and [lastUpdated] parameters are required.
   ProduceListing({
     this.id,
     required this.farmerId,
@@ -127,6 +223,12 @@ class ProduceListing {
     this.quantitySoldAndDelivered = 0,
   });
 
+  /// Creates a [ProduceListing] from Firestore document data.
+  ///
+  /// The [data] parameter contains the document fields, and [id] is the document ID.
+  /// Handles type conversion and provides fallbacks for missing or invalid data.
+  ///
+  /// Throws an exception if critical data cannot be parsed.
   factory ProduceListing.fromFirestore(Map<String, dynamic> data, String id) {
     if (kDebugMode) {
       debugPrint('Parsing ProduceListing (ID: $id): $data');
@@ -182,6 +284,12 @@ class ProduceListing {
     }
   }
 
+  /// Converts this listing to a Firestore document.
+  ///
+  /// Creates a map of fields suitable for storing in Firestore.
+  /// Only includes non-null fields to avoid storing unnecessary null values.
+  ///
+  /// Returns a Map containing the listing data ready for Firestore.
   Map<String, dynamic> toFirestore() {
     return {
       'farmerId': farmerId,
@@ -208,6 +316,10 @@ class ProduceListing {
     };
   }
 
+  /// Creates a copy of this listing with the specified fields replaced.
+  ///
+  /// Returns a new [ProduceListing] instance with updated fields while preserving
+  /// the values of fields that are not specified.
   ProduceListing copyWith({
     String? id,
     String? farmerId,

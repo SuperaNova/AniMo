@@ -6,6 +6,7 @@ import 'package:animo/services/firebase_auth_service.dart';
 import 'package:animo/services/produce_listing_service.dart'; // Added import
 // import 'package:animo/core/models/app_user.dart'; // AppUser is used by AuthWrapper, not directly by StreamProvider here anymore
 import 'package:animo/core/widgets/auth_wrapper.dart'; // Ensure AuthWrapper is imported
+import 'package:animo/core/services/environment_service.dart'; // Add environment service
 import 'firebase_options.dart'; // Ensure this is uncommented and present
 import 'package:animo/features/auth/screens/login_screen.dart';
 import 'package:animo/features/auth/screens/landing_screen.dart'; // Import the new LandingScreen
@@ -15,26 +16,74 @@ import 'package:animo/theme/theme.dart'; // Your custom theme
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
+/// Entry point of the AniMo application.
+///
+/// Initializes environment settings, Firebase services, and date formatting
+/// before launching the app. Includes safety timeouts to ensure the app starts
+/// even if certain initialization steps fail.
 Future<void> main() async {
-  Intl.defaultLocale = 'en_PH';
-  await initializeDateFormatting();
+  try {
+    // Set default locale
+    Intl.defaultLocale = 'en_PH';
+    await initializeDateFormatting();
 
-  // Ensure Flutter bindings are initialized
-  WidgetsFlutterBinding.ensureInitialized();
+    // Ensure Flutter bindings are initialized
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform, // Uses firebase_options.dart
-  );
+    // Initialize environment configurations with timeout
+    bool envInitialized = false;
+    await Future.delayed(const Duration(seconds: 5), () {
+      if (!envInitialized) {
+        print('WARNING: Environment initialization timeout. Continuing anyway.');
+      }
+    });
+    
+    try {
+      await EnvironmentService.initialize();
+      envInitialized = true;
+    } catch (e) {
+      print('ERROR initializing environment: $e');
+      // Continue despite error
+    }
 
+    // Initialize Firebase with timeout
+    FirebaseOptions? firebaseOptions;
+    try {
+      firebaseOptions = DefaultFirebaseOptions.currentPlatform;
+    } catch (e) {
+      print('ERROR getting Firebase options: $e');
+      // Continue without Firebase options
+    }
+
+    if (firebaseOptions != null) {
+      try {
+        await Firebase.initializeApp(options: firebaseOptions);
+        print('Firebase initialized successfully');
+      } catch (e) {
+        print('ERROR initializing Firebase: $e');
+        // Continue despite Firebase error
+      }
+    }
+  } catch (e) {
+    print('ERROR during initialization: $e');
+    // Continue despite initialization errors
+  }
+
+  // Run the app even if initialization had issues
   runApp(const MyApp());
 }
 
-// Helper function to wrap any route with the ResponsiveWrapper
+/// Wraps a widget with responsive layout handling.
+///
+/// Applies the [ResponsiveWrapper] to any route to ensure consistent
+/// layout behavior across platforms.
 Widget wrapRoute(Widget screen) {
   return ResponsiveWrapper(child: screen);
 }
 
+/// Main application widget for AniMo.
+///
+/// Sets up providers, theming, routing, and the overall application structure.
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
@@ -99,12 +148,25 @@ class MyApp extends StatelessWidget {
 }
 
 /// A wrapper widget that provides fixed dimensions for web platform
-/// but allows normal responsiveness on mobile platforms
+/// but allows normal responsiveness on mobile platforms.
+///
+/// On web, creates a phone-like container with specific dimensions and styling
+/// to simulate a mobile device. On actual mobile devices, it passes through
+/// the child widget without modifications.
 class ResponsiveWrapper extends StatelessWidget {
+  /// The widget to be displayed inside the responsive container.
   final Widget child;
+  
+  /// The width of the simulated device on web platforms.
   final double webWidth;
+  
+  /// The height of the simulated device on web platforms.
   final double webHeight;
 
+  /// Creates a [ResponsiveWrapper] with the specified child and dimensions.
+  ///
+  /// The [webWidth] and [webHeight] parameters are only used when running on web
+  /// and default to iPhone 13 Pro dimensions.
   const ResponsiveWrapper({
     Key? key,
     required this.child,

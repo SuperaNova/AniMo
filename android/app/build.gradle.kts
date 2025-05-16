@@ -31,6 +31,9 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // Add Google Maps API key from local.properties
+        manifestPlaceholders["MAPS_API_KEY"] = MY_API_KEY
     }
 
     buildTypes {

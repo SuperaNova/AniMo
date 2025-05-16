@@ -7,11 +7,13 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:animo/core/models/produce_listing.dart';
 import 'package:animo/core/models/match_suggestion.dart';
+import 'package:animo/core/models/buyer_request.dart';
 import 'package:animo/services/firestore_service.dart';
 // import 'package:animo/theme/theme.dart'; // Assuming this was for testing, not strictly needed for this change
 import 'package:animo/core/screens/map_picker_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart'; // Import FirebaseAuth
 import 'package:cloud_firestore/cloud_firestore.dart'; // Added for FieldValue
+import 'package:animo/features/buyer/screens/match_suggestions_screen.dart'; // Added import
 
 // ProductCategoryFilter enum and extension (as you provided)
 enum ProductCategoryFilter { all, vegetable, fruit, herb, grain, processed }
@@ -303,107 +305,116 @@ class _AvailableProduceTabState extends State<AvailableProduceTab> {
                 color: matchSuggestionContainerColor,
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Match Suggestions for You:',
-                        style: textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: matchSuggestionTextColor
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      StreamBuilder<List<MatchSuggestion>>(
-                        stream: firestoreService.getBuyerMatchSuggestions(),
-                        builder: (context, snapshot) {
-                          // ... (your existing StreamBuilder for match suggestions, no changes needed here for animation)
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return Center(child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: CircularProgressIndicator(color: matchSuggestionTextColor.withOpacity(0.7)),
-                            ));
-                          }
-                          if (snapshot.hasError) {
-                            return Center(child: Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Text('Error fetching suggestions: ${snapshot.error}', style: TextStyle(color: colorScheme.error.withOpacity(0.8))),
-                            ));
-                          }
-                          if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                            return Center(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 10.0),
-                                child: Text('No new match suggestions for you at the moment.',
-                                    style: TextStyle(color: matchSuggestionTextColor.withOpacity(0.8))),
-                              ),
-                            );
-                          }
-                          final suggestions = snapshot.data!;
-                          final relevantSuggestions = suggestions.where((s) =>
-                          s.status == MatchStatus.pending_buyer_approval ||
-                              s.status == MatchStatus.accepted_by_farmer).toList();
+                  child: FutureBuilder<int>(
+                    future: firestoreService.getTotalRelevantMatchSuggestionsCount(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) { // Show loader only if no data yet
+                        return Center(
+                            child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 20.0),
+                          child: CircularProgressIndicator(color: matchSuggestionTextColor.withOpacity(0.7)),
+                        ));
+                      }
+                      if (snapshot.hasError && !snapshot.hasData) { // Show error only if no data yet to show behind it
+                        return Center(
+                            child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 20.0),
+                          child: Text('Could not load suggestions.', style: TextStyle(color: matchSuggestionTextColor.withOpacity(0.8))),
+                        ));
+                      }
 
-                          if (relevantSuggestions.isEmpty) {
-                            return Center(
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 10.0),
-                                child: Text('No suggestions currently requiring your action.',
-                                    style: TextStyle(color: matchSuggestionTextColor.withOpacity(0.8))),
-                              ),
-                            );
-                          }
-                          return Column(
-                            children: relevantSuggestions.map((suggestion) {
-                              return Container(
-                                margin: const EdgeInsets.only(bottom: 8.0),
-                                padding: const EdgeInsets.all(12.0),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
+                      // Use snapshot.data for count, default to 0 if null (e.g. initial load or error after some data)
+                      final int count = snapshot.data ?? 0;
+
+                      return Column(
+                          mainAxisSize: MainAxisSize.min, 
+                          crossAxisAlignment: CrossAxisAlignment.start, 
+                          children: [
+                            // Always visible: Title Row
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.center, 
+                              children: [
+                                Text(
+                                  'Match Suggestions For You:',
+                                  style: textTheme.bodyMedium?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                    color: matchSuggestionTextColor,
+                                    letterSpacing: 0.4,
+                                  ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text('Suggestion for: ${suggestion.produceName}',
-                                              style: textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold, color: matchSuggestionTextColor)),
-                                          Text(
-                                              'Farmer: ${suggestion.farmerName ?? 'Unknown'}\nQuantity: ${suggestion.suggestedQuantity} ${suggestion.unit}\nPrice: ${suggestion.suggestedPricePerUnit} ${suggestion.currency} per ${suggestion.unit}\nStatus: ${suggestion.status.displayName}',
-                                              style: textTheme.bodySmall?.copyWith(color: matchSuggestionTextColor.withOpacity(0.9), height: 1.4)),
-                                        ],
-                                      ),
+                                if (snapshot.connectionState == ConnectionState.waiting)
+                                  SizedBox(
+                                    width: 20, height: 20,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: matchSuggestionTextColor.withOpacity(0.7)),
+                                  )
+                                else
+                                  Text(
+                                    count.toString(),
+                                    style: textTheme.headlineSmall?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.red.shade300, // Light red color
                                     ),
-                                    if (suggestion.status == MatchStatus.pending_buyer_approval || suggestion.status == MatchStatus.accepted_by_farmer)
-                                      Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: <Widget>[
-                                          IconButton(
-                                            icon: Icon(Icons.check_circle_outline, color: Colors.greenAccent.shade100),
-                                            tooltip: 'Accept Suggestion',
-                                            onPressed: () async {
-                                              // ... your accept logic
-                                            },
-                                          ),
-                                          IconButton(
-                                            icon: Icon(Icons.cancel_outlined, color: Colors.redAccent.shade100.withOpacity(0.9)),
-                                            tooltip: 'Reject Suggestion',
-                                            onPressed: () async {
-                                              // ... your reject logic
-                                            },
-                                          ),
-                                        ],
+                                  ),
+                              ],
+                            ),
+                            const SizedBox(height: 16), 
+
+                            // Conditional Content: Button or "No suggestions" text
+                            if (count > 0) ...[
+                              SizedBox(
+                                width: double.infinity,
+                                child: TextButton(
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 10.0),
+                                  ),
+                                  onPressed: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(builder: (context) => const MatchSuggestionsScreen()), 
+                                    );
+                                  },
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center, 
+                                    children: [
+                                      Text(
+                                        'View all Matches',
+                                        style: textTheme.titleSmall?.copyWith(
+                                          color: matchSuggestionTextColor,
+                                          fontWeight: FontWeight.w600, 
+                                          letterSpacing: 0.8, 
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Icon(
+                                        Icons.arrow_forward_ios,
+                                        color: matchSuggestionTextColor,
+                                        size: 15, 
                                       )
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              );
-                            }).toList(),
-                          );
-                        },
-                      ),
-                    ],
+                              ),
+                            ] else if (snapshot.connectionState == ConnectionState.done) ...[ // Show "no suggestions" only when loading is done
+                              Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(vertical: 10.0), // Adjusted padding
+                                  child: Text(
+                                    'No new match suggestions for you at the moment.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(color: matchSuggestionTextColor.withOpacity(0.9), fontSize: 15, fontWeight: FontWeight.w500),
+                                  ),
+                                ),
+                              ),
+                            ] else ...[
+                              // Potentially a very brief moment between future completing with 0 and builder re-running
+                              // or if we want a placeholder while count is known to be 0 but still technically loading something else.
+                              // For now, an empty SizedBox is fine, covered by main loader mostly.
+                              const SizedBox.shrink(),
+                            ]
+                          ],
+                        );
+                    },
                   ),
                 ),
               ),
