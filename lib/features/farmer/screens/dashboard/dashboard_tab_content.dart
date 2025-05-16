@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kDebugMode;
-import 'package:provider/provider.dart';
-
 import '../../../../core/models/farmer_stats.dart';
 import '../../../../core/models/order.dart';
 import '../../../../core/models/produce_listing.dart';
@@ -131,6 +129,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Unified card for pending confirmation, delivered, and active orders
                   _buildUnifiedOrdersPromptCard(context, widget.firestoreService, colorScheme),
                   _buildRecentCompletedOrdersSection(context, widget.firebaseAuthService, widget.firestoreService, widget.produceListingService, colorScheme),
                   const SizedBox(height: 80),
@@ -284,20 +283,21 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     );
   }
 
+  // --- UNIFIED ORDERS PROMPT CARD ---
   Widget _buildUnifiedOrdersPromptCard(BuildContext context, FirestoreService firestoreService, ColorScheme colorScheme) {
-    // ... (Implementation remains the same) ...
     return StreamBuilder<int>(
       stream: firestoreService.watchPendingConfirmationOrdersCount(),
       initialData: widget.farmerStats?.pendingConfirmationOrdersCount ?? 0,
       builder: (context, pendingSnapshot) {
         int pendingOrdersCount = widget.farmerStats?.pendingConfirmationOrdersCount ?? 0;
-        if (pendingSnapshot.hasData) {
+        if (pendingSnapshot.connectionState == ConnectionState.active && pendingSnapshot.hasData) {
           pendingOrdersCount = pendingSnapshot.data!;
         } else if (pendingSnapshot.hasError && kDebugMode) {
           print("Error in PendingOrdersStream (Unified Card): ${pendingSnapshot.error}");
         }
 
         if (pendingOrdersCount > 0) {
+          // Display "Orders to Confirm" card
           return _buildPromptCardContent(
             context: context,
             colorScheme: colorScheme,
@@ -316,52 +316,76 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
             },
           );
         } else {
+          // No pending confirmation orders, so check for "Delivered, Awaiting Completion"
           return StreamBuilder<int>(
-            stream: firestoreService.watchActiveInProgressOrdersCount(),
-            initialData: widget.farmerStats?.activeInProgressOrdersCount ?? 0,
-            builder: (context, activeSnapshot) {
-              int activeOrdersCount = widget.farmerStats?.activeInProgressOrdersCount ?? 0;
-              if (activeSnapshot.hasData) {
-                activeOrdersCount = activeSnapshot.data!;
-              } else if (activeSnapshot.hasError && kDebugMode) {
-                print("Error in ActiveOrdersStream (Unified Card): ${activeSnapshot.error}");
+            stream: firestoreService.watchDeliveredOrdersToCompleteCount(),
+            initialData: widget.farmerStats?.deliveredOrdersToCompleteCount ?? 0,
+            builder: (context, deliveredSnapshot) {
+              int deliveredOrdersCount = widget.farmerStats?.deliveredOrdersToCompleteCount ?? 0;
+              if (deliveredSnapshot.connectionState == ConnectionState.active && deliveredSnapshot.hasData) {
+                deliveredOrdersCount = deliveredSnapshot.data!;
+              } else if (deliveredSnapshot.hasError && kDebugMode) {
+                print("Error in DeliveredOrdersStream (Unified Card): ${deliveredSnapshot.error}");
               }
 
-              if (activeOrdersCount > 0) {
+              if (deliveredOrdersCount > 0) {
+                // Display "Mark as Completed" card
                 return _buildPromptCardContent(
                   context: context,
                   colorScheme: colorScheme,
-                  title: 'Active Orders',
-                  count: activeOrdersCount,
-                  messageSuffix: 'active orders',
-                  iconData: Icons.local_shipping_outlined,
-                  cardColor: colorScheme.secondaryContainer,
-                  iconBgColor: colorScheme.secondary,
-                  iconColor: colorScheme.onSecondary,
-                  textColor: colorScheme.onSecondaryContainer,
+                  title: 'Mark as Completed',
+                  count: deliveredOrdersCount,
+                  messageSuffix: 'orders to complete',
+                  iconData: Icons.playlist_add_check_circle_outlined, // Icon for completion
+                  cardColor: Colors.blue.shade100.withOpacity(0.7), // Distinct color, e.g., light blue
+                  iconBgColor: Colors.blue.shade700,
+                  iconColor: Colors.white,
+                  textColor: Colors.blue.shade900,
                   onTap: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => const ActiveOrdersScreen()),
+                      MaterialPageRoute(builder: (context) => const ActiveOrdersScreen()), // Navigate to where they can mark as completed
                     );
                   },
                 );
               } else {
-                return _buildPromptCardContent(
-                    context: context,
-                    colorScheme: colorScheme,
-                    title: 'Order Updates',
-                    count: 0,
-                    messageSuffix: 'No pending or active orders',
-                    iconData: Icons.playlist_add_check_circle_outlined,
-                    cardColor: colorScheme.primaryContainer.withOpacity(0.7),
-                    iconBgColor: colorScheme.primary,
-                    iconColor: colorScheme.onPrimary,
-                    textColor: colorScheme.onPrimaryContainer,
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (context) => const ActiveOrdersScreen()),
-                      );
+                // No pending confirmation AND no delivered orders, so check for active in-progress orders
+                return StreamBuilder<int>(
+                  stream: firestoreService.watchActiveInProgressOrdersCount(),
+                  initialData: widget.farmerStats?.activeInProgressOrdersCount ?? 0,
+                  builder: (context, activeSnapshot) {
+                    int activeOrdersCount = widget.farmerStats?.activeInProgressOrdersCount ?? 0;
+                    if (activeSnapshot.connectionState == ConnectionState.active && activeSnapshot.hasData) {
+                      activeOrdersCount = activeSnapshot.data!;
+                    } else if (activeSnapshot.hasError && kDebugMode) {
+                      print("Error in ActiveOrdersStream (Unified Card): ${activeSnapshot.error}");
                     }
+
+                    // Show "Active Orders" card only if there are active orders
+                    // Otherwise, show "No pending or active orders"
+                    bool noActionsAtAll = activeOrdersCount <= 0; // True if pending, delivered, and active are all 0
+
+                    return _buildPromptCardContent(
+                        context: context,
+                        colorScheme: colorScheme,
+                        title: noActionsAtAll ? 'Order Updates' : 'Active Orders',
+                        count: activeOrdersCount, // This will be 0 if noActionsAtAll is true
+                        messageSuffix: noActionsAtAll ? 'No pending or active orders' : (activeOrdersCount == 1 ? 'active order' : 'active orders'),
+                        iconData: noActionsAtAll ? Icons.check_circle_outline_rounded : Icons.local_shipping_outlined,
+                        cardColor: noActionsAtAll
+                            ? colorScheme.primaryContainer.withOpacity(0.6)
+                            : colorScheme.secondaryContainer,
+                        iconBgColor: noActionsAtAll
+                            ? colorScheme.primary.withOpacity(0.7)
+                            : colorScheme.secondary,
+                        iconColor: noActionsAtAll ? colorScheme.onPrimary : colorScheme.onSecondary,
+                        textColor: noActionsAtAll ? colorScheme.onPrimaryContainer : colorScheme.onSecondaryContainer,
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (context) => const ActiveOrdersScreen()),
+                          );
+                        }
+                    );
+                  },
                 );
               }
             },
@@ -384,8 +408,8 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     required Color textColor,
     required VoidCallback onTap,
   }) {
-    // ... (Implementation remains the same) ...
     String message = count <= 0 ? messageSuffix : '$count $messageSuffix';
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(16,16,16,8),
       child: GestureDetector(
@@ -458,9 +482,9 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     return Padding(
         padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
         child: Container(
-          padding: const EdgeInsets.all(16.0), // Inner padding for the card content
+          padding: const EdgeInsets.all(16.0),
           decoration: BoxDecoration(
-              color: colorScheme.surfaceContainer, // Card background
+              color: colorScheme.surfaceContainer,
               borderRadius: const BorderRadius.all(Radius.circular(20))
           ),
           child: Column(
@@ -473,7 +497,6 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
                     'Recently Completed Orders',
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
                   ),
-                  // --- ADDED "View All" BUTTON ---
                   TextButton(
                     onPressed: () {
                       Navigator.of(context).push(
@@ -556,9 +579,9 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     required ProduceListing? produceListing,
     required ColorScheme colorScheme,
   }) {
-    // ... (Implementation remains the same) ...
-    final DateFormat dateFormat = DateFormat('MMM d, yy'); // Slightly shorter date
-    final String completedDateString =  dateFormat.format(order.lastUpdated);
+    final DateFormat dateFormat = DateFormat('MMM d, yy');
+    final String completedDateString = dateFormat.format(order.lastUpdated);
+
 
     IconData itemIcon = produceListing?.produceCategory.icon ?? Icons.inventory_2_outlined;
     Color itemIconColor = produceListing?.produceCategory.color ?? colorScheme.onSurfaceVariant;
@@ -566,15 +589,13 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 6.0),
-      elevation: 0.0, // Flat design within the parent card
-      color: Colors.transparent, // Transparent as parent card has color
-      // color: colorScheme.surface, // Or a slightly different surface if desired
+      elevation: 0.0,
+      color: Colors.transparent,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(10.0),
-        // side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.3)) // Optional border
       ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0), // Adjusted padding
+        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 4.0),
         child: Row(
           children: [
             CircleAvatar(
