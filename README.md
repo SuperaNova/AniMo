@@ -107,11 +107,6 @@ For Firebase Hosting:
 firebase deploy --only hosting
 ```
 
-For Vercel:
-```
-vercel
-```
-
 ## Considerations for CI/CD
 When setting up continuous integration or deployment:
 
