@@ -33,25 +33,6 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
     _produceListingService = Provider.of<ProduceListingService>(context, listen: false);
   }
 
-  // Helper to get icon and color based on OrderStatus (can be shared or duplicated if needed)
-  Map<String, dynamic> _getStyleForOrderStatus(OrderStatus status, ColorScheme colorScheme) {
-    switch (status) {
-      case OrderStatus.completed:
-        return {'icon': Icons.check_circle_outline, 'color': colorScheme.secondary, 'bgColor': colorScheme.secondaryContainer.withOpacity(0.3)};
-      case OrderStatus.cancelled_by_buyer:
-      case OrderStatus.cancelled_by_farmer:
-      case OrderStatus.cancelled_by_platform:
-        return {'icon': Icons.cancel_outlined, 'color': colorScheme.error, 'bgColor': colorScheme.errorContainer.withOpacity(0.3)};
-      case OrderStatus.failed_delivery:
-        return {'icon': Icons.running_with_errors_outlined, 'color': colorScheme.error, 'bgColor': colorScheme.errorContainer.withOpacity(0.3)};
-      case OrderStatus.disputed:
-        return {'icon': Icons.report_problem_outlined, 'color': Colors.orange.shade700, 'bgColor': Colors.orange.shade100.withOpacity(0.3)};
-    // Add other terminal statuses if any
-      default: // For active statuses, though they should be filtered out
-        return {'icon': Icons.info_outline, 'color': colorScheme.onSurfaceVariant, 'bgColor': colorScheme.surfaceVariant.withOpacity(0.3)};
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -140,7 +121,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                 future: _produceListingService.getProduceListingById(order.produceListingId),
                 builder: (context, listingSnapshot) {
                   ProduceListing? produceListing = listingSnapshot.data;
-                  final styleInfo = _getStyleForOrderStatus(order.status, colorScheme);
+                  final styleInfo = getStyleForOrderStatus(order.status, colorScheme);
                   final DateFormat dateFormat = DateFormat('MMM d, yyyy');
                   final String dateString =  dateFormat.format(order.lastUpdated);
 
