@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import './location_data.dart'; // Import the new location_data.dart
 import 'package:flutter/foundation.dart'; // For debugPrint
 
@@ -256,4 +257,116 @@ class ProduceListing {
       quantitySoldAndDelivered: quantitySoldAndDelivered ?? this.quantitySoldAndDelivered,
     );
   }
-} 
+}
+
+Widget buildProduceListingItem({
+  required BuildContext context, // Added context to access Theme
+  required IconData iconData,
+  required Color iconBgColor,
+  required Color iconColor,
+  required String title,
+  required String categoryName,
+  required double remainingQuantity,
+  required String unit,
+  required double pricePerUnit,
+  required String currency,
+  required ProduceListingStatus status,
+  VoidCallback? onTap, // Optional: for making the card tappable
+}) {
+  final colorScheme = Theme.of(context).colorScheme;
+  final textTheme = Theme.of(context).textTheme;
+
+  String quantityText = remainingQuantity > 0
+      ? '${remainingQuantity.toStringAsFixed(1)} $unit left'
+      : 'None left';
+
+  if (status != ProduceListingStatus.available) {
+    quantityText = status.displayName; // Override quantity text if not available
+  }
+
+
+  return Card(
+    margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 0), // Adjusted horizontal margin
+    elevation: 1.0,
+    color: colorScheme.surfaceContainer, // Use themed card color
+    shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.5))
+    ),
+    child: InkWell( // Make the card tappable
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12.0),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: iconBgColor,
+              child: Icon(iconData, color: iconColor, size: 26),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: colorScheme.onSurface),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    categoryName,
+                    style: textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    quantityText,
+                    style: textTheme.bodyMedium?.copyWith(
+                        color: status == ProduceListingStatus.available && remainingQuantity > 0
+                            ? colorScheme.secondary // Greenish for available quantity
+                            : colorScheme.onSurfaceVariant.withOpacity(0.8), // Greyish for other statuses or none left
+                        fontWeight: FontWeight.w500
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.start,
+              children: [
+                Text(
+                  NumberFormat.currency(locale: Intl.defaultLocale, symbol: '$currency ', decimalDigits: 2).format(pricePerUnit),
+                  style: textTheme.titleSmall?.copyWith(
+                    color: colorScheme.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'per $unit',
+                  style: textTheme.bodySmall?.copyWith(color: colorScheme.onSurfaceVariant),
+                ),
+                if (status != ProduceListingStatus.available) // Show status explicitly if not available
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4.0),
+                    child: Chip(
+                      label: Text(status.displayName, style: textTheme.labelSmall?.copyWith(color: colorScheme.onErrorContainer)),
+                      backgroundColor: colorScheme.errorContainer.withOpacity(0.7),
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+                      labelPadding: EdgeInsets.zero,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}

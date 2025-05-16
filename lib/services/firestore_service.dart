@@ -267,7 +267,7 @@ class FirestoreService {
 
     String farmerName = "Unknown Farmer";
     try {
-      final userDoc = await _db.collection('users').doc(currentUserId).get(); // Assuming a 'users' collection for farmer name
+      final userDoc = await _db.collection('users').doc(currentUserId).get();
       if (userDoc.exists && userDoc.data()?['displayName'] != null) {
         farmerName = userDoc.data()!['displayName'];
       }
@@ -277,14 +277,14 @@ class FirestoreService {
       }
     }
 
-
+    // Fetch Active ProduceListings for totalActiveListingsCount AND totalActiveListingsValue
     final activeListingsQuery = _db
         .collection('produceListings')
         .where('farmerId', isEqualTo: currentUserId)
         .where('status', isEqualTo: ProduceListingStatus.available.name);
 
     int totalActiveListingsCount = 0;
-    double totalListingsValue = 0;
+    double totalActiveListingsValue = 0; // New variable for this sum
     try {
       final activeListingsSnapshot = await activeListingsQuery.get();
       List<ProduceListing> activeListings = activeListingsSnapshot.docs
@@ -293,9 +293,10 @@ class FirestoreService {
 
       totalActiveListingsCount = activeListings.length;
       for (var listing in activeListings) {
-        totalListingsValue += listing.quantity * listing.pricePerUnit;
+        // Calculate value of active listings: current quantity * price
+        totalActiveListingsValue += listing.quantity * listing.pricePerUnit;
       }
-      // Fallback for farmer name if not found via users collection and listings are available
+
       if (farmerName == "Unknown Farmer" && activeListings.isNotEmpty) {
         farmerName = activeListings.first.farmerName ?? "Unknown Farmer";
       }
@@ -303,37 +304,48 @@ class FirestoreService {
       debugPrint("Error fetching active listings for stats: $e");
     }
 
-    // This query remains for "Match Suggestions" card
+    // Calculate totalValueFromCompletedOrders (this was previously totalListingsValue)
+    double totalValueFromCompletedOrders = 0;
+    final completedOrdersQuery = _db
+        .collection('orders')
+        .where('farmerId', isEqualTo: currentUserId)
+        .where('status', isEqualTo: OrderStatus.completed.name);
+
+    try {
+      final completedOrdersSnapshot = await completedOrdersQuery.get();
+      List<app_order.Order> completedOrders = completedOrdersSnapshot.docs
+          .map((doc) => app_order.Order.fromFirestore(doc.data(), doc.id))
+          .toList();
+
+      for (var order in completedOrders) {
+        totalValueFromCompletedOrders += order.totalOrderAmount;
+      }
+    } catch (e) {
+      debugPrint("Error fetching completed orders value for stats: $e");
+    }
+
+    // ... (rest of the counts remain the same: pendingMatchSuggestions, pendingConfirmationOrders, activeInProgress, delivered)
     final pendingMatchSuggestionsQuery = _db
         .collection('matchSuggestions')
         .where('farmerId', isEqualTo: currentUserId)
         .where('status', isEqualTo: MatchStatus.pending_farmer_approval.name);
-
     int pendingMatchSuggestionsCount = 0;
     try {
-      final pendingSuggestionsSnapshot = await pendingMatchSuggestionsQuery.get();
-      pendingMatchSuggestionsCount = pendingSuggestionsSnapshot.docs.length;
-    } catch(e) {
-      debugPrint("Error fetching pending match suggestions count: $e");
-    }
+      final snap = await pendingMatchSuggestionsQuery.get();
+      pendingMatchSuggestionsCount = snap.docs.length;
+    } catch(e) { debugPrint("Error: $e");}
 
-    // This query remains for the "Orders to Confirm" card (which might be hidden)
+
     final pendingConfirmationOrdersQuery = _db
         .collection('orders')
         .where('farmerId', isEqualTo: currentUserId)
         .where('status', isEqualTo: OrderStatus.pending_confirmation.name);
-
     int pendingConfirmationOrdersCount = 0;
     try {
-      final pendingOrdersSnapshot = await pendingConfirmationOrdersQuery.get();
-      pendingConfirmationOrdersCount = pendingOrdersSnapshot.docs.length;
-    } catch (e) {
-      debugPrint("Error fetching pending confirmation orders count: $e");
-    }
+      final snap = await pendingConfirmationOrdersQuery.get();
+      pendingConfirmationOrdersCount = snap.docs.length;
+    } catch(e) { debugPrint("Error: $e");}
 
-    // --- NEW: Query for "Active In-Progress Orders" ---
-    // These are orders past 'pending_confirmation' but not yet 'completed' or any terminal state.
-    // Define statuses that are considered "active and in-progress" for the farmer.
     final List<String> activeInProgressOrderStatuses = [
       OrderStatus.confirmed_by_platform.name,
       OrderStatus.searching_for_driver.name,
@@ -343,31 +355,40 @@ class FirestoreService {
       OrderStatus.picked_up.name,
       OrderStatus.en_route_to_delivery.name,
       OrderStatus.at_delivery_location.name,
-      OrderStatus.delivered.name, // 'delivered' is active until 'completed' (payment settled)
     ];
-
     int activeInProgressOrdersCount = 0;
-    if (activeInProgressOrderStatuses.isNotEmpty) { // Check to prevent empty 'whereIn' query
+    if(activeInProgressOrderStatuses.isNotEmpty){
       final activeOrdersQuery = _db
           .collection('orders')
           .where('farmerId', isEqualTo: currentUserId)
           .where('status', whereIn: activeInProgressOrderStatuses);
-      try {
-        final activeOrdersSnapshot = await activeOrdersQuery.get();
-        activeInProgressOrdersCount = activeOrdersSnapshot.docs.length;
-      } catch (e) {
-        debugPrint("Error fetching active in-progress orders count: $e");
-      }
+      try{
+        final snap = await activeOrdersQuery.get();
+        activeInProgressOrdersCount = snap.docs.length;
+      } catch(e) { debugPrint("Error: $e");}
     }
+
+
+    final deliveredOrdersQuery = _db
+        .collection('orders')
+        .where('farmerId', isEqualTo: currentUserId)
+        .where('status', isEqualTo: OrderStatus.delivered.name);
+    int deliveredOrdersToCompleteCount = 0;
+    try {
+      final snap = await deliveredOrdersQuery.get();
+      deliveredOrdersToCompleteCount = snap.docs.length;
+    } catch(e) { debugPrint("Error: $e");}
 
 
     return FarmerStats(
       totalActiveListings: totalActiveListingsCount,
-      totalListingsValue: totalListingsValue,
+      totalActiveListingsValue: totalActiveListingsValue, // Pass new value
+      totalListingsValue: totalValueFromCompletedOrders, // This now clearly means completed orders value
       pendingMatchSuggestions: pendingMatchSuggestionsCount,
       farmerName: farmerName,
       pendingConfirmationOrdersCount: pendingConfirmationOrdersCount,
-      activeInProgressOrdersCount: activeInProgressOrdersCount, // Pass the new count
+      activeInProgressOrdersCount: activeInProgressOrdersCount,
+      deliveredOrdersToCompleteCount: deliveredOrdersToCompleteCount,
     );
   }
 
@@ -428,6 +449,30 @@ class FirestoreService {
       });
     } catch (e, stackTrace) {
       debugPrint("Exception caught in watchActiveInProgressOrdersCount: $e");
+      debugPrintStack(stackTrace: stackTrace);
+      return Stream.value(0);
+    }
+  }
+
+  Stream<int> watchDeliveredOrdersToCompleteCount() {
+    if (currentUserId == null || currentUserId!.isEmpty) {
+      debugPrint("FirestoreService: No currentUserId, returning stream with 0 for delivered orders count.");
+      return Stream.value(0);
+    }
+    try {
+      return _db
+          .collection('orders')
+          .where('farmerId', isEqualTo: currentUserId)
+          .where('status', isEqualTo: OrderStatus.delivered.name)
+          .snapshots()
+          .map((snapshot) => snapshot.docs.length)
+          .handleError((error, stackTrace) {
+        debugPrint("Error in watchDeliveredOrdersToCompleteCount stream: $error");
+        debugPrintStack(stackTrace: stackTrace);
+        return 0;
+      });
+    } catch (e, stackTrace) {
+      debugPrint("Exception caught in watchDeliveredOrdersToCompleteCount: $e");
       debugPrintStack(stackTrace: stackTrace);
       return Stream.value(0);
     }
