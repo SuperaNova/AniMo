@@ -391,7 +391,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> with SingleTick
                                   ),
                                   dropdownColor: sheetBackgroundColor,
                                   items: UserRole.values
-                                      .where((role) => role != UserRole.unknown) // Exclude 'unknown' from selectable roles
+                                      .where((role) => role != UserRole.unknown && role != UserRole.admin) // Exclude 'unknown' and 'admin' roles
                                       .map((UserRole role) {
                                     String roleName = role.toString().split('.').last;
                                     roleName = roleName[0].toUpperCase() + roleName.substring(1).replaceAll('_', ' '); // Format role name

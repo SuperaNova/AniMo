@@ -48,6 +48,9 @@ app.*.map.json
 lib/firebase_options.dart
 android/app/google-services.json
 
+# Environment and API keys
+lib/env_config.dart
+
 # More Flutter/Dart specific
 .packages
 

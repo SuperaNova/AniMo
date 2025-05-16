@@ -259,7 +259,12 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                     ),
                                     Text(
                                       'Remember me',
-                                      style: TextStyle(color: _darkTextColor.withOpacity(0.8), fontSize: 14),
+                                      style: TextStyle(
+                                        color: Theme.of(context).brightness == Brightness.dark 
+                                          ? Colors.white 
+                                          : _darkTextColor.withOpacity(0.8),
+                                        fontSize: 14
+                                      ),
                                     ),
                                   ],
                                 ),

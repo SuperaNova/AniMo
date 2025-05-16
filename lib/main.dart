@@ -6,6 +6,7 @@ import 'package:animo/services/firebase_auth_service.dart';
 import 'package:animo/services/produce_listing_service.dart'; // Added import
 // import 'package:animo/core/models/app_user.dart'; // AppUser is used by AuthWrapper, not directly by StreamProvider here anymore
 import 'package:animo/core/widgets/auth_wrapper.dart'; // Ensure AuthWrapper is imported
+import 'package:animo/core/services/environment_service.dart'; // Add environment service
 import 'firebase_options.dart'; // Ensure this is uncommented and present
 import 'package:animo/features/auth/screens/login_screen.dart';
 import 'package:animo/features/auth/screens/landing_screen.dart'; // Import the new LandingScreen
@@ -16,17 +17,54 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 Future<void> main() async {
-  Intl.defaultLocale = 'en_PH';
-  await initializeDateFormatting();
+  try {
+    // Set default locale
+    Intl.defaultLocale = 'en_PH';
+    await initializeDateFormatting();
 
-  // Ensure Flutter bindings are initialized
-  WidgetsFlutterBinding.ensureInitialized();
+    // Ensure Flutter bindings are initialized
+    WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform, // Uses firebase_options.dart
-  );
+    // Initialize environment configurations with timeout
+    bool envInitialized = false;
+    await Future.delayed(const Duration(seconds: 5), () {
+      if (!envInitialized) {
+        print('WARNING: Environment initialization timeout. Continuing anyway.');
+      }
+    });
+    
+    try {
+      await EnvironmentService.initialize();
+      envInitialized = true;
+    } catch (e) {
+      print('ERROR initializing environment: $e');
+      // Continue despite error
+    }
 
+    // Initialize Firebase with timeout
+    FirebaseOptions? firebaseOptions;
+    try {
+      firebaseOptions = DefaultFirebaseOptions.currentPlatform;
+    } catch (e) {
+      print('ERROR getting Firebase options: $e');
+      // Continue without Firebase options
+    }
+
+    if (firebaseOptions != null) {
+      try {
+        await Firebase.initializeApp(options: firebaseOptions);
+        print('Firebase initialized successfully');
+      } catch (e) {
+        print('ERROR initializing Firebase: $e');
+        // Continue despite Firebase error
+      }
+    }
+  } catch (e) {
+    print('ERROR during initialization: $e');
+    // Continue despite initialization errors
+  }
+
+  // Run the app even if initialization had issues
   runApp(const MyApp());
 }
 

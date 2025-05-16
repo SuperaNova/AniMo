@@ -42,7 +42,7 @@
         <!-- Google Maps API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyARw7HMGDYTITaTbdHAW0MP0eZeOwy0e9Q"/>
+            android:value="${MAPS_API_KEY}"/>
 
     </application>
     <!-- Required to query activities that can process text, see:
