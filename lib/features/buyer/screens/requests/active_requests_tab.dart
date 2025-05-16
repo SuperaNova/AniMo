@@ -91,22 +91,22 @@ class ActiveRequestsTab extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: textTheme.titleMedium?.copyWith(color: colorScheme.onSurfaceVariant)
                     ),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.list_alt),
-                      label: const Text('View Match Suggestions'),
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (context) => const MatchSuggestionsScreen()),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red.shade100,
-                        foregroundColor: Colors.red.shade800,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                      ),
-                    ),
+                    // const SizedBox(height: 24), // Keep or remove spacing based on preference
+                    // ElevatedButton.icon(
+                    //   icon: const Icon(Icons.list_alt),
+                    //   label: const Text('View Match Suggestions'),
+                    //   onPressed: () {
+                    //     Navigator.of(context).push(
+                    //       MaterialPageRoute(builder: (context) => const MatchSuggestionsScreen()),
+                    //     );
+                    //   },
+                    //   style: ElevatedButton.styleFrom(
+                    //     backgroundColor: Colors.red.shade100,
+                    //     foregroundColor: Colors.red.shade800,
+                    //     elevation: 0,
+                    //     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    //   ),
+                    // ),
                   ],
                 ),
               ),
@@ -117,40 +117,21 @@ class ActiveRequestsTab extends StatelessWidget {
           return Column(
             children: [
               // Match Suggestions Header
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Your Requests',
-                      style: textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.onSurface,
-                      ),
-                    ),
-                    TextButton.icon(
-                      icon: Icon(Icons.handshake_outlined, size: 20, color: Colors.red.shade700),
-                      label: Text(
-                        'View Matches',
-                        style: TextStyle(color: Colors.red.shade700),
-                      ),
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (context) => const MatchSuggestionsScreen()),
-                        );
-                      },
-                      style: TextButton.styleFrom(
-                        backgroundColor: Colors.red.shade50,
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              // Container(
+              //   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              //   child: Row(
+              //     mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              //     children: [
+              //       Text(
+              //         'Your Requests',
+              //         style: textTheme.titleMedium?.copyWith(
+              //           fontWeight: FontWeight.bold,
+              //           color: colorScheme.onSurface,
+              //         ),
+              //       ),
+              //     ],
+              //   ),
+              // ),
               
               // Request List
               Expanded(
@@ -169,12 +150,7 @@ class ActiveRequestsTab extends StatelessWidget {
                       elevation: 1.5,
                       child: InkWell(
                         borderRadius: BorderRadius.circular(12.0),
-                        onTap: () {
-                          // TODO: Navigate to request detail screen or show options
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Tapped on request: ${request.produceNeededName ?? 'request'}')),
-                          );
-                        },
+                        onTap: null,
                         child: Padding(
                           padding: const EdgeInsets.all(12.0),
                           child: Row(
