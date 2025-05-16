@@ -1,6 +1,6 @@
 import {onDocumentWritten, FirestoreEvent, Change} from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
-import * as admin from "firebase-admin";
+import { admin } from "../admin"; // Import initialized admin instance
 import {REGION} from "../config";
 import {
   MatchSuggestionFirestoreData,

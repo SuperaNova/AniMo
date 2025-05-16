@@ -1,16 +1,16 @@
 import * as functions from "firebase-functions";
-import * as admin from "firebase-admin";
+import { admin, db } from "../admin"; // Import initialized admin and db instances
 import {Timestamp, FieldValue} from "firebase-admin/firestore"; // Import Timestamp and FieldValue
 import {z} from "zod"; // Import Zod
 
-// Import our stub instead of direct import
-import {run} from "../genkitStub";
-import {generateMatchSuggestionsFlow} from "../genkit/flows"; // This might error if flows.ts has issues
+// Import generateMatchSuggestionsFlow from flows
+import {generateMatchSuggestionsFlow} from "../genkit/flows"; 
 import {onDocumentCreated} from "firebase-functions/v2/firestore";
 // Removed: import { QueryDocumentSnapshot } from "firebase-admin/firestore"; // No longer explicitly used
 // Removed: import { MatchSuggestionFirestoreDataSchema } from "./zodSchemas"; // Will define schemas here
 
-const db = admin.firestore();
+// We now use the db from admin.ts, so we don't need to initialize it here
+// const db = admin.firestore();
 
 // Zod schema for LocationData (example, expand as needed)
 export const LocationDataSchema = z.object({
@@ -49,23 +49,31 @@ export type ProduceListingDocData = z.infer<typeof ProduceListingDocDataSchema>;
 // Zod schema for BuyerRequestDocData (example, expand as needed)
 export const BuyerRequestDocDataSchema = z.object({
   buyerId: z.string(),
-  category: z.string(),
+  category: z.string().optional(),
   variety: z.string().optional(),
-  quantity: z.number(),
-  unit: z.string(),
+  quantity: z.number().optional(),
+  unit: z.string().optional(),
   targetPricePerUnit: z.number().optional(),
   description: z.string().optional(),
   deliveryLocation: LocationDataSchema,
   status: z.enum(["pending_match", "partially_fulfilled", "fulfilled", "cancelled", "expired"]),
   isAiMatchPreferred: z.boolean().optional(),
-  creationTimestamp: z.custom<Timestamp>((val) => val instanceof Timestamp),
+  creationTimestamp: z.custom<Timestamp>((val) => val instanceof Timestamp).optional(),
   expiryTimestamp: z.custom<Timestamp>((val) => val instanceof Timestamp).optional(),
-  lastUpdateTimestamp: z.custom<Timestamp>((val) => val instanceof Timestamp),
-  // Add other fields from your project overview
-  produceNeededName: z.string().optional(), // Added as it's used in flows.ts
-  produceCategory: z.string().optional(), // Added based on flows.ts usage (ensure it's distinct from 'category' if needed)
-  desiredQuantity: z.number().optional(), // Added based on flows.ts usage
-  quantityUnit: z.string().optional(), // Added based on flows.ts usage
+  lastUpdateTimestamp: z.custom<Timestamp>((val) => val instanceof Timestamp).optional(),
+  // Add Dart model field names
+  produceNeededName: z.string().optional(),
+  produceNeededCategory: z.string().optional(),
+  quantityNeeded: z.number().optional(),
+  quantityUnit: z.string().optional(),
+  requestDateTime: z.custom<Timestamp>((val) => val instanceof Timestamp).optional(),
+  deliveryDeadline: z.custom<Timestamp>((val) => val instanceof Timestamp).optional(),
+  lastUpdated: z.custom<Timestamp>((val) => val instanceof Timestamp).optional(),
+  priceRangeMinPerUnit: z.number().optional(),
+  priceRangeMaxPerUnit: z.number().optional(),
+  // Other possible fields
+  produceCategory: z.string().optional(),
+  desiredQuantity: z.number().optional(),
 });
 export type BuyerRequestDocData = z.infer<typeof BuyerRequestDocDataSchema>;
 
@@ -189,12 +197,8 @@ async function prepareAndRunFlowForListing(
   };
 
   try {
-    // Use the simple signature for run without registry
-    const suggestions: GenkitMatchOutput[] = await run(
-      "generateMatchSuggestions", // Flow name as string
-      flowInput, // Flow input
-      generateMatchSuggestionsFlow // The flow function
-    );
+    // Directly call the flow function
+    const suggestions: GenkitMatchOutput[] = await generateMatchSuggestionsFlow(flowInput);
     functions.logger.info(`[handleAiMatching] Received ${suggestions.length} suggestions for listing ${listingDoc.id}`);
 
     for (const suggestion of suggestions) { // suggestion is GenkitMatchOutput
@@ -210,10 +214,72 @@ async function prepareAndRunFlowForListing(
       functions.logger.info(`[handleAiMatching] Created MatchSuggestion for Listing ${suggestion.listingId} and Request ${suggestion.buyerRequestId}`);
     }
   } catch (error) {
-    functions.logger.error(`[handleAiMatching] Error running Genkit flow for listing ${listingDoc.id}:`, error);
-    if (error instanceof z.ZodError) {
-      functions.logger.error("[handleAiMatching] Zod validation error:", error.issues);
+    functions.logger.error("[handleAiMatching] Error running AI flow for listing", {
+      listingId: listingDoc.id,
+      error,
+    });
+  }
+}
+
+/**
+ * Processes a new buyer request and finds potential produce listing matches
+ * @param {BuyerRequestFirestoreDocument} requestDoc The new buyer request document
+ * @return {Promise<void>} A promise that resolves when processing is complete
+ */
+async function prepareAndRunFlowForRequest(
+  requestDoc: BuyerRequestFirestoreDocument // Zod-inferred type
+): Promise<void> {
+  functions.logger.info(`[handleAiMatching] Processing new request: ${requestDoc.id}`);
+
+  if (!requestDoc.data.isAiMatchPreferred) {
+    functions.logger.info("[handleAiMatching] Request does not want AI matching", {requestId: requestDoc.id});
+    return;
+  }
+
+  const listingsSnapshot = await db.collection("produceListings")
+    .where("status", "in", ["available", "partially_committed"])
+    .get();
+
+  if (listingsSnapshot.empty) {
+    functions.logger.info("[handleAiMatching] No active listings found for request", {requestId: requestDoc.id});
+    return;
+  }
+
+  const potentialMatches: ProduceListingFirestoreDocument[] = listingsSnapshot.docs.map((doc) => ({
+    id: doc.id,
+    // Ensure data conforms to ProduceListingDocDataSchema with parsing
+    data: ProduceListingDocDataSchema.parse(doc.data()),
+  }));
+
+  const flowInput: MatchGenerationInput = {
+    triggeringItem: requestDoc,
+    potentialMatches: potentialMatches,
+    context: "request_triggered",
+    config: {minScoreThreshold: 0.7},
+  };
+
+  try {
+    // Directly call the flow function
+    const suggestions: GenkitMatchOutput[] = await generateMatchSuggestionsFlow(flowInput);
+    functions.logger.info(`[handleAiMatching] Received ${suggestions.length} suggestions for request ${requestDoc.id}`);
+
+    for (const suggestion of suggestions) {
+      const matchSuggestionData = MatchSuggestionFirestoreDataSchema.parse({
+        ...suggestion,
+        listingRefPath: `produceListings/${suggestion.listingId}`,
+        buyerRequestRefPath: `buyerRequests/${suggestion.buyerRequestId}`, // Ensure buyerRequestId is present
+        status: "ai_suggestion_for_buyer",
+        suggestionTimestamp: admin.firestore.FieldValue.serverTimestamp(),
+        suggestionExpiryTimestamp: admin.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000),
+      });
+      await db.collection("matchSuggestions").add(matchSuggestionData);
+      functions.logger.info(`[handleAiMatching] Created MatchSuggestion for Listing ${suggestion.listingId} and Request ${suggestion.buyerRequestId}`);
     }
+  } catch (error) {
+    functions.logger.error("[handleAiMatching] Error running AI flow for request", {
+      requestId: requestDoc.id,
+      error,
+    });
   }
 }
 
@@ -267,58 +333,5 @@ export const onNewBuyerRequestForAiMatching = onDocumentCreated("buyerRequests/{
     data: requestData,
   };
 
-  functions.logger.info(`[handleAiMatching] Processing new buyer request: ${requestDoc.id}`);
-
-  const listingsSnapshot = await db.collection("produceListings")
-    .where("status", "in", ["available", "partially_committed"])
-    .get();
-
-  if (listingsSnapshot.empty) {
-    functions.logger.info("[handleAiMatching] No active produce listings found for buyer request.", {requestId: requestDoc.id});
-    return;
-  }
-
-  const potentialMatches: ProduceListingFirestoreDocument[] = listingsSnapshot.docs.map((doc) => {
-    // Validate each potential match; skip or log error if invalid
-    const parsedData = ProduceListingDocDataSchema.parse(doc.data()); // or .safeParse()
-    return {
-      id: doc.id,
-      data: parsedData,
-    };
-  });
-
-  const flowInput: MatchGenerationInput = {
-    triggeringItem: requestDoc,
-    potentialMatches: potentialMatches,
-    context: "request_triggered",
-    config: {minScoreThreshold: 0.7},
-  };
-
-  try {
-    // Use the simple signature for run without registry
-    const suggestions: GenkitMatchOutput[] = await run(
-      "generateMatchSuggestions", // Flow name as string
-      flowInput, // Flow input
-      generateMatchSuggestionsFlow // The flow function
-    );
-    functions.logger.info(`[handleAiMatching] Received ${suggestions.length} suggestions for buyer request ${requestDoc.id}`);
-
-    for (const suggestion of suggestions) {
-      const matchSuggestionData = MatchSuggestionFirestoreDataSchema.parse({
-        ...suggestion,
-        listingRefPath: `produceListings/${suggestion.listingId}`,
-        buyerRequestRefPath: `buyerRequests/${suggestion.buyerRequestId}`, // Ensure buyerRequestId is present
-        status: "ai_suggestion_for_buyer",
-        suggestionTimestamp: admin.firestore.FieldValue.serverTimestamp(),
-        suggestionExpiryTimestamp: admin.firestore.Timestamp.fromMillis(Date.now() + 24 * 60 * 60 * 1000),
-      });
-      await db.collection("matchSuggestions").add(matchSuggestionData);
-      functions.logger.info(`[handleAiMatching] Created MatchSuggestion for Listing ${suggestion.listingId} and Request ${suggestion.buyerRequestId}`);
-    }
-  } catch (error) {
-    functions.logger.error(`[handleAiMatching] Error running Genkit flow for buyer request ${requestDoc.id}:`, error);
-    if (error instanceof z.ZodError) {
-      functions.logger.error("[handleAiMatching] Zod validation error:", error.issues);
-    }
-  }
+  await prepareAndRunFlowForRequest(requestDoc);
 });

@@ -1,6 +1,6 @@
 import {onDocumentCreated, FirestoreEvent} from "firebase-functions/v2/firestore";
 import * as logger from "firebase-functions/logger";
-import * as admin from "firebase-admin";
+import { admin, db } from "../admin"; // Import initialized admin and db
 import {REGION} from "../config";
 import {
   ProduceListingDocData,
@@ -12,7 +12,8 @@ import {
 } from "../models/aiMatchingTypes";
 import {generateMatchSuggestionsFlow} from "../genkit/flows"; // Mock flow
 
-const db = admin.firestore();
+// No need to initialize Firestore here since we're importing it
+// const db = admin.firestore();
 const MIN_AI_SCORE_THRESHOLD = 0.7; // Default minimum score to create a suggestion
 const SUGGESTION_TTL_HOURS = 24; // Suggestions expire after 24 hours
 
@@ -41,8 +42,9 @@ export const onNewProduceListingForAiMatching = onDocumentCreated(
 
     // 1. Fetch active buyer requests
     const buyerRequestsQuery = db.collection("buyerRequests")
-      .where("status", "==", "pending_match")
-      .where("deliveryDeadline", ">", admin.firestore.Timestamp.now());
+      .where("status", "==", "pending_match");
+      // Removed the date comparison to avoid requiring an index
+      // We will filter in memory instead
 
     const buyerRequestsSnapshot = await buyerRequestsQuery.get();
 
@@ -51,17 +53,45 @@ export const onNewProduceListingForAiMatching = onDocumentCreated(
       return null;
     }
 
-    const potentialMatches: Array<FirestoreDocument<BuyerRequestDocData>> = buyerRequestsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      data: doc.data() as BuyerRequestDocData,
-    }));
+    // Filter buyer requests by delivery deadline in memory to avoid requiring an index
+    const currentTimestamp = admin.firestore.Timestamp.now();
+    const potentialMatches: Array<FirestoreDocument<BuyerRequestDocData>> = buyerRequestsSnapshot.docs
+      .filter(doc => {
+        const data = doc.data();
+        return (data.deliveryDeadline && data.deliveryDeadline > currentTimestamp) ||
+               (data.expiryTimestamp && data.expiryTimestamp > currentTimestamp);
+      })
+      .map((doc) => ({
+        id: doc.id,
+        data: doc.data() as BuyerRequestDocData,
+      }));
 
     logger.info(`Found ${potentialMatches.length} potential buyer requests for listing ${listingId}.`);
+
+    // Ensure listing has produceName field to avoid LLM errors
+    if (!listingData.produceName) {
+      logger.warn(`Listing ${listingId} is missing produceName field, adding a default value`);
+      (listingData as any).produceName = "Unlabeled Produce";
+    }
+
+    // Ensure all potential matches have the required fields
+    const validPotentialMatches = potentialMatches.filter(match => {
+      if (!match.data.produceNeededName) {
+        logger.warn(`Request ${match.id} is missing produceNeededName field, it will be excluded from matching`);
+        return false;
+      }
+      return true;
+    });
+    
+    if (validPotentialMatches.length === 0) {
+      logger.info(`No valid buyer requests found for listing ${listingId} after filtering.`);
+      return null;
+    }
 
     // 2. Prepare input for Genkit flow
     const genkitInput: MatchGenerationInput = {
       triggeringItem: triggeringItem,
-      potentialMatches: potentialMatches,
+      potentialMatches: validPotentialMatches,
       context: "listing_triggered",
       config: {
         minScoreThreshold: MIN_AI_SCORE_THRESHOLD,
@@ -136,6 +166,18 @@ export const onNewBuyerRequestForAiMatching = onDocumentCreated(
     const requestId = event.params.requestId;
     const requestData = snapshot.data() as BuyerRequestDocData;
 
+    // Add detailed logging to help diagnose the issue
+    logger.info(`[DEBUGGING] Received new buyer request with ID: ${requestId}`);
+    logger.info(`[DEBUGGING] Document data:`, JSON.stringify({
+      fields: Object.keys(requestData),
+      isAiMatchPreferred: requestData.isAiMatchPreferred,
+      status: requestData.status,
+      buyerId: requestData.buyerId,
+      produceNeededName: requestData.produceNeededName,
+      deliveryDeadline: requestData.deliveryDeadline,
+      expiryTimestamp: requestData.expiryTimestamp,
+    }));
+
     if (!requestData) {
       logger.error(`Request data for ${requestId} is undefined. This should not happen for onCreate.`);
       return null;
@@ -151,8 +193,9 @@ export const onNewBuyerRequestForAiMatching = onDocumentCreated(
 
     // 1. Fetch active produce listings
     const produceListingsQuery = db.collection("produceListings")
-      .where("status", "==", "available")
-      .where("expiryTimestamp", ">", admin.firestore.Timestamp.now());
+      .where("status", "==", "available");
+      // Removed the date comparison to avoid requiring an index
+      // We will filter in memory instead
 
     const listingsSnapshot = await produceListingsQuery.get();
 
@@ -161,17 +204,45 @@ export const onNewBuyerRequestForAiMatching = onDocumentCreated(
       return null;
     }
 
-    const potentialMatches: Array<FirestoreDocument<ProduceListingDocData>> = listingsSnapshot.docs.map((doc) => ({
-      id: doc.id,
-      data: doc.data() as ProduceListingDocData,
-    }));
+    // Filter listings by expiry date in memory to avoid requiring an index
+    const currentTime = admin.firestore.Timestamp.now();
+    const potentialMatches: Array<FirestoreDocument<ProduceListingDocData>> = listingsSnapshot.docs
+      .filter(doc => {
+        const data = doc.data();
+        return (data.expiryTimestamp && data.expiryTimestamp > currentTime) || 
+               (data.deliveryDeadline && data.deliveryDeadline > currentTime);
+      })
+      .map((doc) => ({
+        id: doc.id,
+        data: doc.data() as ProduceListingDocData,
+      }));
 
     logger.info(`Found ${potentialMatches.length} potential produce listings for request ${requestId}.`);
+
+    // Ensure request has produceNeededName field to avoid LLM errors
+    if (!requestData.produceNeededName) {
+      logger.warn(`Request ${requestId} is missing produceNeededName field, adding a default value`);
+      (requestData as any).produceNeededName = "Unspecified Produce";
+    }
+
+    // Ensure all potential matches have the required fields
+    const validPotentialMatches = potentialMatches.filter(match => {
+      if (!match.data.produceName) {
+        logger.warn(`Listing ${match.id} is missing produceName field, it will be excluded from matching`);
+        return false;
+      }
+      return true;
+    });
+    
+    if (validPotentialMatches.length === 0) {
+      logger.info(`No valid produce listings found for request ${requestId} after filtering.`);
+      return null;
+    }
 
     // 2. Prepare input for Genkit flow
     const genkitInput: MatchGenerationInput = {
       triggeringItem: triggeringItem,
-      potentialMatches: potentialMatches,
+      potentialMatches: validPotentialMatches,
       context: "request_triggered",
       config: {
         minScoreThreshold: MIN_AI_SCORE_THRESHOLD,
