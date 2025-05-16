@@ -217,13 +217,14 @@ class FirestoreService {
       }
     }
 
+    // Fetch Active ProduceListings for totalActiveListingsCount AND totalActiveListingsValue
     final activeListingsQuery = _db
         .collection('produceListings')
         .where('farmerId', isEqualTo: currentUserId)
         .where('status', isEqualTo: ProduceListingStatus.available.name);
 
     int totalActiveListingsCount = 0;
-    double totalListingsValue = 0;
+    double totalActiveListingsValue = 0; // New variable for this sum
     try {
       final activeListingsSnapshot = await activeListingsQuery.get();
       List<ProduceListing> activeListings = activeListingsSnapshot.docs
@@ -232,8 +233,10 @@ class FirestoreService {
 
       totalActiveListingsCount = activeListings.length;
       for (var listing in activeListings) {
-        totalListingsValue += listing.quantity * listing.pricePerUnit;
+        // Calculate value of active listings: current quantity * price
+        totalActiveListingsValue += listing.quantity * listing.pricePerUnit;
       }
+
       if (farmerName == "Unknown Farmer" && activeListings.isNotEmpty) {
         farmerName = activeListings.first.farmerName ?? "Unknown Farmer";
       }
@@ -241,31 +244,47 @@ class FirestoreService {
       debugPrint("Error fetching active listings for stats: $e");
     }
 
+    // Calculate totalValueFromCompletedOrders (this was previously totalListingsValue)
+    double totalValueFromCompletedOrders = 0;
+    final completedOrdersQuery = _db
+        .collection('orders')
+        .where('farmerId', isEqualTo: currentUserId)
+        .where('status', isEqualTo: OrderStatus.completed.name);
+
+    try {
+      final completedOrdersSnapshot = await completedOrdersQuery.get();
+      List<app_order.Order> completedOrders = completedOrdersSnapshot.docs
+          .map((doc) => app_order.Order.fromFirestore(doc.data(), doc.id))
+          .toList();
+
+      for (var order in completedOrders) {
+        totalValueFromCompletedOrders += order.totalOrderAmount;
+      }
+    } catch (e) {
+      debugPrint("Error fetching completed orders value for stats: $e");
+    }
+
+    // ... (rest of the counts remain the same: pendingMatchSuggestions, pendingConfirmationOrders, activeInProgress, delivered)
     final pendingMatchSuggestionsQuery = _db
         .collection('matchSuggestions')
         .where('farmerId', isEqualTo: currentUserId)
         .where('status', isEqualTo: MatchStatus.pending_farmer_approval.name);
-
     int pendingMatchSuggestionsCount = 0;
     try {
-      final pendingSuggestionsSnapshot = await pendingMatchSuggestionsQuery.get();
-      pendingMatchSuggestionsCount = pendingSuggestionsSnapshot.docs.length;
-    } catch(e) {
-      debugPrint("Error fetching pending match suggestions count: $e");
-    }
+      final snap = await pendingMatchSuggestionsQuery.get();
+      pendingMatchSuggestionsCount = snap.docs.length;
+    } catch(e) { debugPrint("Error: $e");}
+
 
     final pendingConfirmationOrdersQuery = _db
         .collection('orders')
         .where('farmerId', isEqualTo: currentUserId)
         .where('status', isEqualTo: OrderStatus.pending_confirmation.name);
-
     int pendingConfirmationOrdersCount = 0;
     try {
-      final pendingOrdersSnapshot = await pendingConfirmationOrdersQuery.get();
-      pendingConfirmationOrdersCount = pendingOrdersSnapshot.docs.length;
-    } catch (e) {
-      debugPrint("Error fetching pending confirmation orders count: $e");
-    }
+      final snap = await pendingConfirmationOrdersQuery.get();
+      pendingConfirmationOrdersCount = snap.docs.length;
+    } catch(e) { debugPrint("Error: $e");}
 
     final List<String> activeInProgressOrderStatuses = [
       OrderStatus.confirmed_by_platform.name,
@@ -276,46 +295,40 @@ class FirestoreService {
       OrderStatus.picked_up.name,
       OrderStatus.en_route_to_delivery.name,
       OrderStatus.at_delivery_location.name,
-      // OrderStatus.delivered.name, // Exclude 'delivered' from this specific "active in-progress" count
-      // as we'll have a separate count for them.
     ];
-
     int activeInProgressOrdersCount = 0;
-    if (activeInProgressOrderStatuses.isNotEmpty) {
+    if(activeInProgressOrderStatuses.isNotEmpty){
       final activeOrdersQuery = _db
           .collection('orders')
           .where('farmerId', isEqualTo: currentUserId)
           .where('status', whereIn: activeInProgressOrderStatuses);
-      try {
-        final activeOrdersSnapshot = await activeOrdersQuery.get();
-        activeInProgressOrdersCount = activeOrdersSnapshot.docs.length;
-      } catch (e) {
-        debugPrint("Error fetching active in-progress orders count: $e");
-      }
+      try{
+        final snap = await activeOrdersQuery.get();
+        activeInProgressOrdersCount = snap.docs.length;
+      } catch(e) { debugPrint("Error: $e");}
     }
 
-    // --- NEW: Query for "Delivered, Awaiting Completion" Orders count ---
+
     final deliveredOrdersQuery = _db
         .collection('orders')
         .where('farmerId', isEqualTo: currentUserId)
         .where('status', isEqualTo: OrderStatus.delivered.name);
-
     int deliveredOrdersToCompleteCount = 0;
     try {
-      final deliveredOrdersSnapshot = await deliveredOrdersQuery.get();
-      deliveredOrdersToCompleteCount = deliveredOrdersSnapshot.docs.length;
-    } catch (e) {
-      debugPrint("Error fetching delivered orders count for stats: $e");
-    }
+      final snap = await deliveredOrdersQuery.get();
+      deliveredOrdersToCompleteCount = snap.docs.length;
+    } catch(e) { debugPrint("Error: $e");}
+
 
     return FarmerStats(
       totalActiveListings: totalActiveListingsCount,
-      totalListingsValue: totalListingsValue,
+      totalActiveListingsValue: totalActiveListingsValue, // Pass new value
+      totalListingsValue: totalValueFromCompletedOrders, // This now clearly means completed orders value
       pendingMatchSuggestions: pendingMatchSuggestionsCount,
       farmerName: farmerName,
       pendingConfirmationOrdersCount: pendingConfirmationOrdersCount,
       activeInProgressOrdersCount: activeInProgressOrdersCount,
-      deliveredOrdersToCompleteCount: deliveredOrdersToCompleteCount, // Pass new count
+      deliveredOrdersToCompleteCount: deliveredOrdersToCompleteCount,
     );
   }
 

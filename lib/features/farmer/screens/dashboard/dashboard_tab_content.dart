@@ -11,6 +11,9 @@ import '../../../../services/firestore_service.dart';
 import '../order/active_orders_screen.dart';
 import '../order/order_history_screen.dart';
 
+// Enum to manage the state of the statistics card display
+enum StatisticsType { activeListingsValue, completedOrdersValue }
+
 class DashboardTabContent extends StatefulWidget {
   final FarmerStats? farmerStats;
   final bool isLoadingStats;
@@ -35,8 +38,9 @@ class DashboardTabContent extends StatefulWidget {
 }
 
 class _DashboardTabContentState extends State<DashboardTabContent> with SingleTickerProviderStateMixin {
-  String _selectedPeriod = 'Day';
-  String? _selectedWeek = 'Week';
+  // String _selectedPeriod = 'Day'; // No longer used for Day/Total
+  StatisticsType _selectedStatsType = StatisticsType.activeListingsValue; // Default to show active listings value
+  String? _selectedWeek = 'Week'; // For the time period dropdown (Week, Month, Year)
 
   late AnimationController _cardAnimationController;
   late Animation<double> _cardFadeAnimation;
@@ -129,7 +133,6 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Unified card for pending confirmation, delivered, and active orders
                   _buildUnifiedOrdersPromptCard(context, widget.firestoreService, colorScheme),
                   _buildRecentCompletedOrdersSection(context, widget.firebaseAuthService, widget.firestoreService, widget.produceListingService, colorScheme),
                   const SizedBox(height: 80),
@@ -143,7 +146,17 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
   }
 
   Widget _buildStatisticsCard(BuildContext context, FarmerStats stats, ColorScheme colorScheme) {
-    // ... (Implementation remains the same) ...
+    String displayValueString;
+    String displayLabel;
+
+    if (_selectedStatsType == StatisticsType.activeListingsValue) {
+      displayValueString = NumberFormat.currency(locale: Intl.defaultLocale, symbol: '₱', decimalDigits: 2).format(stats.totalActiveListingsValue);
+      displayLabel = "${stats.totalActiveListings} Active Listings Value";
+    } else { // StatisticsType.completedOrdersValue
+      displayValueString = NumberFormat.currency(locale: Intl.defaultLocale, symbol: '₱', decimalDigits: 2).format(stats.totalListingsValue); // totalListingsValue now means completed orders value
+      displayLabel = "Completed Orders Value";
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20.0),
@@ -161,11 +174,12 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
+              // Updated Toggle Buttons
               Row(
                 children: [
-                  _buildPeriodToggleItem("Total", colorScheme),
+                  _buildStatsTypeToggleItem("Active", StatisticsType.activeListingsValue, colorScheme),
                   const SizedBox(width: 8),
-                  _buildPeriodToggleItem("Day", colorScheme),
+                  _buildStatsTypeToggleItem("Completed", StatisticsType.completedOrdersValue, colorScheme),
                 ],
               ),
               Container(
@@ -180,7 +194,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
                     icon: Icon(Icons.keyboard_arrow_down, color: colorScheme.surface),
                     dropdownColor: colorScheme.surfaceContainerHighest,
                     style: TextStyle(color: colorScheme.surface),
-                    items: <String>['Week', 'Month', 'Year']
+                    items: <String>['Week', 'Month', 'Year'] // This dropdown might need different logic now
                         .map<DropdownMenuItem<String>>((String value) {
                       return DropdownMenuItem<String>(
                         value: value,
@@ -190,6 +204,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
                     onChanged: (String? newValue) {
                       setState(() {
                         _selectedWeek = newValue;
+                        // TODO: Potentially refetch stats if this dropdown should filter the main value
                       });
                     },
                   ),
@@ -198,18 +213,18 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
             ],
           ),
           const SizedBox(height: 20),
-          Text(
+          Text( // This label might also need to be dynamic or rethought
             'As of ${DateFormat('MMM').format(DateTime.now())} ${DateTime.now().day}, ${DateTime.now().year}',
             style: TextStyle(color: colorScheme.surface.withOpacity(0.7), fontSize: 14),
           ),
           const SizedBox(height: 8),
-          Text(
-            NumberFormat.currency(locale: Intl.defaultLocale, symbol: '₱', decimalDigits: 2).format(stats.totalListingsValue),
+          Text( // Display the selected value
+            displayValueString,
             style: TextStyle(
                 color: colorScheme.surface, fontSize: 36, fontWeight: FontWeight.bold),
           ),
-          Text(
-            '${stats.totalActiveListings} Active Listings',
+          Text( // Display the corresponding label
+            displayLabel,
             style: TextStyle(color: colorScheme.surface.withOpacity(0.8), fontSize: 16),
           ),
           const SizedBox(height: 20),
@@ -256,13 +271,15 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     );
   }
 
-  Widget _buildPeriodToggleItem(String period, ColorScheme colorScheme) {
-    // ... (Implementation remains the same) ...
-    bool isSelected = _selectedPeriod == period;
+  // Updated Toggle Item Builder
+  Widget _buildStatsTypeToggleItem(String label, StatisticsType type, ColorScheme colorScheme) {
+    bool isSelected = _selectedStatsType == type;
     return GestureDetector(
       onTap: () {
         setState(() {
-          _selectedPeriod = period;
+          _selectedStatsType = type;
+          // Potentially, the graph and "Week/Month/Year" dropdown should also react to this change.
+          // For now, only the main value and its label are changed.
         });
       },
       child: Container(
@@ -273,7 +290,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
             border: isSelected ? null : Border.all(color: colorScheme.surface.withOpacity(0.5))
         ),
         child: Text(
-          period,
+          label,
           style: TextStyle(
             color: colorScheme.surface,
             fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
@@ -283,8 +300,9 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     );
   }
 
-  // --- UNIFIED ORDERS PROMPT CARD ---
+
   Widget _buildUnifiedOrdersPromptCard(BuildContext context, FirestoreService firestoreService, ColorScheme colorScheme) {
+    // ... (Implementation remains the same) ...
     return StreamBuilder<int>(
       stream: firestoreService.watchPendingConfirmationOrdersCount(),
       initialData: widget.farmerStats?.pendingConfirmationOrdersCount ?? 0,
@@ -297,7 +315,6 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
         }
 
         if (pendingOrdersCount > 0) {
-          // Display "Orders to Confirm" card
           return _buildPromptCardContent(
             context: context,
             colorScheme: colorScheme,
@@ -316,7 +333,6 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
             },
           );
         } else {
-          // No pending confirmation orders, so check for "Delivered, Awaiting Completion"
           return StreamBuilder<int>(
             stream: firestoreService.watchDeliveredOrdersToCompleteCount(),
             initialData: widget.farmerStats?.deliveredOrdersToCompleteCount ?? 0,
@@ -329,26 +345,24 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
               }
 
               if (deliveredOrdersCount > 0) {
-                // Display "Mark as Completed" card
                 return _buildPromptCardContent(
                   context: context,
                   colorScheme: colorScheme,
                   title: 'Mark as Completed',
                   count: deliveredOrdersCount,
                   messageSuffix: 'orders to complete',
-                  iconData: Icons.playlist_add_check_circle_outlined, // Icon for completion
-                  cardColor: Colors.blue.shade100.withOpacity(0.7), // Distinct color, e.g., light blue
+                  iconData: Icons.playlist_add_check_circle_outlined,
+                  cardColor: Colors.blue.shade100.withOpacity(0.7),
                   iconBgColor: Colors.blue.shade700,
                   iconColor: Colors.white,
                   textColor: Colors.blue.shade900,
                   onTap: () {
                     Navigator.of(context).push(
-                      MaterialPageRoute(builder: (context) => const ActiveOrdersScreen()), // Navigate to where they can mark as completed
+                      MaterialPageRoute(builder: (context) => const ActiveOrdersScreen()),
                     );
                   },
                 );
               } else {
-                // No pending confirmation AND no delivered orders, so check for active in-progress orders
                 return StreamBuilder<int>(
                   stream: firestoreService.watchActiveInProgressOrdersCount(),
                   initialData: widget.farmerStats?.activeInProgressOrdersCount ?? 0,
@@ -359,16 +373,12 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
                     } else if (activeSnapshot.hasError && kDebugMode) {
                       print("Error in ActiveOrdersStream (Unified Card): ${activeSnapshot.error}");
                     }
-
-                    // Show "Active Orders" card only if there are active orders
-                    // Otherwise, show "No pending or active orders"
-                    bool noActionsAtAll = activeOrdersCount <= 0; // True if pending, delivered, and active are all 0
-
+                    bool noActionsAtAll = activeOrdersCount <= 0;
                     return _buildPromptCardContent(
                         context: context,
                         colorScheme: colorScheme,
                         title: noActionsAtAll ? 'Order Updates' : 'Active Orders',
-                        count: activeOrdersCount, // This will be 0 if noActionsAtAll is true
+                        count: activeOrdersCount,
                         messageSuffix: noActionsAtAll ? 'No pending or active orders' : (activeOrdersCount == 1 ? 'active order' : 'active orders'),
                         iconData: noActionsAtAll ? Icons.check_circle_outline_rounded : Icons.local_shipping_outlined,
                         cardColor: noActionsAtAll
@@ -408,8 +418,8 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     required Color textColor,
     required VoidCallback onTap,
   }) {
+    // ... (Implementation remains the same) ...
     String message = count <= 0 ? messageSuffix : '$count $messageSuffix';
-
     return Padding(
       padding: const EdgeInsets.fromLTRB(16,16,16,8),
       child: GestureDetector(
@@ -473,6 +483,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
   }
 
   Widget _buildRecentCompletedOrdersSection(BuildContext context, FirebaseAuthService authService, FirestoreService firestoreService, ProduceListingService produceListingService, ColorScheme colorScheme) {
+    // ... (Implementation remains the same) ...
     final String? currentUserId = authService.currentFirebaseUser?.uid;
     if (currentUserId == null) {
       return Center(child: Text("User not authenticated for recent activity.", style: TextStyle(color: colorScheme.onSurfaceVariant)));
@@ -579,6 +590,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     required ProduceListing? produceListing,
     required ColorScheme colorScheme,
   }) {
+    // ... (Implementation remains the same) ...
     final DateFormat dateFormat = DateFormat('MMM d, yy');
     final String completedDateString = dateFormat.format(order.lastUpdated);
 
