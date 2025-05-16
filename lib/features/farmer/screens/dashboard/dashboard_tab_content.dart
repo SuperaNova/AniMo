@@ -112,7 +112,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     }
 
     return Container(
-      color: colorScheme.inverseSurface,
+      color: colorScheme.surface,
       child: SingleChildScrollView(
         child: Column(
           children: [

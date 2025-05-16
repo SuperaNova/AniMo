@@ -64,7 +64,7 @@ class MyApp extends StatelessWidget {
         title: 'AniMo',
         theme: customTheme.light(), // Light theme
         darkTheme: customTheme.dark(), // Dark theme
-        themeMode: ThemeMode.system, // Use system theme setting
+        themeMode: ThemeMode.light, // Temporarily disable dark theme
 
         // Apply the phone frame to the home route
         home: wrapRoute(const AuthWrapper()),
