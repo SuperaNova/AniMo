@@ -1,16 +1,16 @@
-import 'package:animo/features/farmer/screens/profile/profile_tab_content.dart';
-import 'package:animo/services/firebase_auth_service.dart';
+import 'package:animo/features/farmer/screens/profile/profile_screen.dart';
+import 'package:animo/services/produce_listing_service.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/models/farmer_stats.dart';
+import '../../../services/firebase_auth_service.dart';
 import '../../../services/firestore_service.dart';
 import 'add_edit_produce_listing_screen.dart';
 import 'dashboard/dashboard_tab_content.dart';
 import 'listings/all_listings_tab_content.dart';
-import 'notifications/notifications_tab_content.dart';
 
 class FarmerMainScreen extends StatefulWidget {
   const FarmerMainScreen({super.key});
@@ -24,6 +24,7 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
 
   late final FirebaseAuthService _authService;
   late final FirestoreService _firestoreService;
+  late final ProduceListingService _produceListingService;
   FarmerStats? _farmerStats; // This will be passed to DashboardTabContent
   bool _isLoadingStats = true;
   String? _statsErrorMessage;
@@ -33,6 +34,7 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
     super.initState();
     _authService = Provider.of<FirebaseAuthService>(context, listen: false);
     _firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    _produceListingService = Provider.of<ProduceListingService>(context, listen: false);
     _fetchFarmerStats();
   }
 
@@ -73,10 +75,9 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
         statsErrorMessage: _statsErrorMessage,
         firestoreService: _firestoreService, // Pass service for real-time history
         firebaseAuthService: _authService,
+        produceListingService: _produceListingService,
       ),
       const AllListingsTabContent(),
-      const NotificationsTabContent(),
-      const ProfileTabContent(),
     ];
   }
 
@@ -90,8 +91,6 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
     switch (index) {
       case 0: return 'Dashboard';
       case 1: return 'My Listings';
-      case 2: return 'Notifications';
-      case 3: return 'Profile';
       default: return 'Farmer Dashboard';
     }
   }
@@ -104,8 +103,6 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
     // Map UI index to screens list index (since FAB is not a screen)
     if (_selectedIndex == 0) currentScreen = screens[0];
     else if (_selectedIndex == 1) currentScreen = screens[1];
-    else if (_selectedIndex == 2) currentScreen = screens[2]; // UI index 2 maps to screens[2]
-    else if (_selectedIndex == 3) currentScreen = screens[3]; // UI index 3 maps to screens[3]
     else currentScreen = screens[0]; // Default
 
     final String profileImageUrl = _farmerStats != null && _farmerStats!.farmerName.isNotEmpty
@@ -123,13 +120,19 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
-            child: CircleAvatar(
+            child: GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (context) => const ProfileScreen()),
+                );
+              },
+              child: CircleAvatar(
                 backgroundImage: NetworkImage(profileImageUrl),
                 onBackgroundImageError: (exception, stackTrace) {
                   if (kDebugMode) print('Error loading profile image: $exception');
                 },
-                radius: 20,
               ),
+            )
           ),
         ],
       ),
@@ -168,10 +171,8 @@ class _FarmerMainScreenState extends State<FarmerMainScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: <Widget>[
               _buildBottomNavItem(icon: Icons.dashboard_outlined, index: 0, label: "Dashboard"), // Changed icon
-              _buildBottomNavItem(icon: Icons.list_alt_outlined, index: 1, label: "Listings"),
               const SizedBox(width: 40), // Space for FAB
-              _buildBottomNavItem(icon: Icons.notifications_outlined, index: 2, label: "Alerts"),
-              _buildBottomNavItem(icon: Icons.person_outline, index: 3, label: "Profile"),
+              _buildBottomNavItem(icon: Icons.list_alt_outlined, index: 1, label: "Listings"),
             ],
           ),
         ),

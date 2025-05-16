@@ -1,5 +1,6 @@
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import 'package:animo/services/firebase_auth_service.dart';
 import 'package:animo/services/produce_listing_service.dart'; // Added import
@@ -11,9 +12,13 @@ import 'package:animo/features/auth/screens/landing_screen.dart'; // Import the 
 import 'package:animo/features/auth/screens/registration_screen.dart'; // Ensure RegistrationScreen is available for routes if needed
 import 'package:animo/services/firestore_service.dart'; // Assuming you have this service
 import 'package:animo/theme/theme.dart'; // Your custom theme
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 Future<void> main() async {
+  Intl.defaultLocale = 'en_PH';
+  await initializeDateFormatting();
+
   // Ensure Flutter bindings are initialized
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -60,27 +65,27 @@ class MyApp extends StatelessWidget {
         theme: customTheme.light(), // Light theme
         darkTheme: customTheme.dark(), // Dark theme
         themeMode: ThemeMode.system, // Use system theme setting
-        
+
         // Apply the phone frame to the home route
         home: wrapRoute(const AuthWrapper()),
-        
+
         // Use a builder to wrap all routes in the ResponsiveWrapper
         builder: (context, child) {
           // If child is null, just return an empty container
           if (child == null) return Container();
-          
+
           // Skip wrapping if this is a dialog, bottomsheet, or popup
           final modalRoute = ModalRoute.of(context);
-          if (modalRoute != null && 
-              (modalRoute is PopupRoute || 
+          if (modalRoute != null &&
+              (modalRoute is PopupRoute ||
               modalRoute.settings.name?.startsWith('_') == true)) {
             return child;
           }
-          
+
           // For normal routes, wrap with responsive container
           return wrapRoute(child);
         },
-        
+
         // Define named routes for navigation without needing to wrap each one
         routes: {
           '/login': (context) => const LoginScreen(),
@@ -172,7 +177,7 @@ class ResponsiveWrapper extends StatelessWidget {
         ),
       );
     }
-    
+
     // For mobile platforms, just return the child directly
     return child;
   }

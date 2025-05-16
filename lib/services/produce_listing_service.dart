@@ -105,7 +105,6 @@ class ProduceListingService {
     }
   }
 
-
   // Read - Get a single listing by ID (might be useful)
   Future<ProduceListing?> getProduceListingById(String listingId) async {
     try {

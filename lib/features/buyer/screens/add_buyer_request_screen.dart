@@ -1,3 +1,4 @@
+import 'package:animo/core/models/app_user.dart';
 import 'package:animo/core/models/location_data.dart';
 import 'package:animo/core/models/produce_listing.dart'; // For ProduceCategory enum
 import 'package:animo/services/firestore_service.dart';
@@ -29,77 +30,111 @@ class _AddBuyerRequestScreenState extends State<AddBuyerRequestScreen> {
   late TextEditingController _customCategoryController;
   late TextEditingController _quantityController;
   late TextEditingController _unitController;
-  late TextEditingController _targetPriceController; // Optional
+  late TextEditingController _targetPriceController;
   late TextEditingController _currencyController;
   late TextEditingController _barangayController;
   late TextEditingController _municipalityController;
-  late TextEditingController _deliveryAddressDetailsController; // Optional
-  DateTime? _requestExpiryDate; // Optional
-  late TextEditingController _notesController; // Optional
+  late TextEditingController _deliveryAddressDetailsController;
+  DateTime? _requestExpiryDate;
+  late TextEditingController _notesController;
 
   bool _showCustomCategory = false;
   bool _isLoading = false;
-  bool get _isEditMode => widget.existingRequest != null; // Added getter for edit mode
+  bool _isLoadingUserDetails = false; // For loading default address
+  bool get _isEditMode => widget.existingRequest != null;
+
+  double? _loadedDefaultLat;
+  double? _loadedDefaultLng;
+  // Store AppUser to get buyerName on new request
+  AppUser? _currentUser;
+
 
   @override
   void initState() {
     super.initState();
+    _initializeControllers();
 
-    final request = widget.existingRequest;
-    if (request != null) {
-      // Pre-fill fields for editing
-      _produceNameController = TextEditingController(text: request.produceNeededName);
-      // Need to determine ProduceCategory enum from request.produceNeededCategory (String)
-      // This might require a helper function or careful parsing if custom category was part of produceNeededName
-      // For now, let's assume produceNeededCategory directly maps to an enum or is "Other"
-      try {
-        _selectedProduceCategory = ProduceCategory.values.firstWhere(
-          (e) => e.displayName == request.produceNeededCategory || e.name == request.produceNeededCategory
-        );
-        if (_selectedProduceCategory == ProduceCategory.other) {
-          _customCategoryController = TextEditingController(text: request.produceNeededName); // If it was other, the name was in produceNeededName
-           _produceNameController.text = ""; // Clear produce name if custom category was used this way
-        } else {
-           _customCategoryController = TextEditingController();
-        }
-      } catch (e) {
-        // Default if category string doesn't match
-        _selectedProduceCategory = ProduceCategory.other; 
-        _customCategoryController = TextEditingController(text: request.produceNeededName);
-         _produceNameController.text = "";
-        print("Error parsing category from existing request: $e");
-      }
-
-      _quantityController = TextEditingController(text: request.quantityNeeded.toString());
-      _unitController = TextEditingController(text: request.quantityUnit);
-      _targetPriceController = TextEditingController(text: request.priceRangeMaxPerUnit?.toString() ?? '');
-      _currencyController = TextEditingController(text: request.currency ?? 'PHP');
-      _barangayController = TextEditingController(text: request.deliveryLocation.barangay);
-      _municipalityController = TextEditingController(text: request.deliveryLocation.municipality);
-      _deliveryAddressDetailsController = TextEditingController(text: request.deliveryLocation.addressHint ?? '');
-      _requestExpiryDate = request.deliveryDeadline.toDate();
-      _notesController = TextEditingController(text: request.notesForFarmer ?? '');
-
-      if (_selectedProduceCategory == ProduceCategory.other) {
-        _showCustomCategory = true;
-      }
-
-    } else {
-      // Initialize for new request
-      _produceNameController = TextEditingController();
-      _selectedProduceCategory = ProduceCategory.vegetable;
-      _customCategoryController = TextEditingController();
-      _quantityController = TextEditingController();
-      _unitController = TextEditingController();
-      _targetPriceController = TextEditingController();
-      _currencyController = TextEditingController(text: 'PHP');
-      _barangayController = TextEditingController();
-      _municipalityController = TextEditingController();
-      _deliveryAddressDetailsController = TextEditingController();
-      _notesController = TextEditingController();
-      // _requestExpiryDate remains null initially
+    if (!_isEditMode) {
+      _loadUserDetailsAndDefaultAddress();
     }
   }
+
+  void _initializeControllers() {
+    final request = widget.existingRequest;
+    _produceNameController = TextEditingController(text: request?.produceNeededName ?? '');
+    
+    if (request != null) {
+      try {
+        _selectedProduceCategory = ProduceCategory.values.firstWhere(
+          (e) => e.displayName.toLowerCase() == request.produceNeededCategory.toLowerCase() || e.name.toLowerCase() == request.produceNeededCategory.toLowerCase()
+        );
+         _customCategoryController = TextEditingController(text: (_selectedProduceCategory == ProduceCategory.other) ? request.produceNeededName : '');
+         if(_selectedProduceCategory == ProduceCategory.other && request.produceNeededName != null){
+           // If it was "Other" and the custom name was stored in produceNeededName
+           // _produceNameController.text = ""; // No, produceNeededName is the custom category name
+         }
+      } catch (e) {
+        _selectedProduceCategory = ProduceCategory.other;
+        _customCategoryController = TextEditingController(text: request.produceNeededName ?? '');
+        debugPrint("Error parsing category from existing request: $e, falling back to Other.");
+      }
+    } else {
+      _selectedProduceCategory = ProduceCategory.vegetable; // Default for new
+      _customCategoryController = TextEditingController();
+    }
+     _showCustomCategory = (_selectedProduceCategory == ProduceCategory.other);
+
+
+    _quantityController = TextEditingController(text: request?.quantityNeeded.toString() ?? '');
+    _unitController = TextEditingController(text: request?.quantityUnit ?? '');
+    _targetPriceController = TextEditingController(text: request?.priceRangeMaxPerUnit?.toString() ?? '');
+    _currencyController = TextEditingController(text: request?.currency ?? 'PHP');
+    
+    _barangayController = TextEditingController(text: request?.deliveryLocation.barangay ?? '');
+    _municipalityController = TextEditingController(text: request?.deliveryLocation.municipality ?? '');
+    _deliveryAddressDetailsController = TextEditingController(text: request?.deliveryLocation.addressHint ?? '');
+    
+    _requestExpiryDate = request?.deliveryDeadline.toDate();
+    _notesController = TextEditingController(text: request?.notesForFarmer ?? '');
+
+    // Store lat/lng if editing
+    if (_isEditMode && request != null) {
+        _loadedDefaultLat = request.deliveryLocation.latitude;
+        _loadedDefaultLng = request.deliveryLocation.longitude;
+    }
+  }
+
+  Future<void> _loadUserDetailsAndDefaultAddress() async {
+    setState(() { _isLoadingUserDetails = true; });
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final firebaseUser = FirebaseAuth.instance.currentUser;
+
+    if (firebaseUser != null) {
+      try {
+        _currentUser = await firestoreService.getAppUser(firebaseUser.uid);
+        if (_currentUser?.defaultDeliveryLocation != null) {
+          final locMap = _currentUser!.defaultDeliveryLocation!;
+          _deliveryAddressDetailsController.text = locMap['formattedAddress'] as String? ?? '';
+          _loadedDefaultLat = locMap['latitude'] as double?;
+          _loadedDefaultLng = locMap['longitude'] as double?;
+          // Optionally try to prefill barangay/municipality if available in map
+          _barangayController.text = locMap['barangay'] as String? ?? _barangayController.text;
+          _municipalityController.text = locMap['municipality'] as String? ?? _municipalityController.text;
+        }
+      } catch (e) {
+        debugPrint("Error loading user details/default address: $e");
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not load default address: ${e.toString()}')),
+          );
+        }
+      }
+    }
+    if(mounted){
+      setState(() { _isLoadingUserDetails = false; });
+    }
+  }
+
 
   @override
   void dispose() {
@@ -131,254 +166,355 @@ class _AddBuyerRequestScreenState extends State<AddBuyerRequestScreen> {
   }
 
   Future<void> _submitForm() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() { _isLoading = true; });
-
-      final firestoreService = Provider.of<FirestoreService>(context, listen: false);
-      final currentUser = FirebaseAuth.instance.currentUser;
-
-      if (currentUser == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Error: User not logged in.')),
-          );
-        }
-        setState(() { _isLoading = false; });
-        return;
-      }
-
-      String effectiveProduceNeededName = _produceNameController.text;
-      String effectiveProduceNeededCategory = _selectedProduceCategory.displayName;
-
-      if (_selectedProduceCategory == ProduceCategory.other) {
-        effectiveProduceNeededName = _customCategoryController.text;
-      }
-
-      final requestData = BuyerRequest(
-        id: _isEditMode ? widget.existingRequest!.id : null, // Preserve ID for updates
-        buyerId: currentUser.uid,
-        buyerName: currentUser.displayName ?? currentUser.email ?? 'Unknown Buyer',
-        requestDateTime: _isEditMode 
-            ? widget.existingRequest!.requestDateTime 
-            : Timestamp.now(), // Preserve original creation time on edit
-        produceNeededName: effectiveProduceNeededName, 
-        produceNeededCategory: effectiveProduceNeededCategory, 
-        quantityNeeded: double.tryParse(_quantityController.text) ?? 0, 
-        quantityUnit: _unitController.text, 
-        deliveryLocation: LocationData( 
-          barangay: _barangayController.text,
-          municipality: _municipalityController.text,
-          addressHint: _deliveryAddressDetailsController.text.isNotEmpty 
-              ? _deliveryAddressDetailsController.text 
-              : null,
-          latitude: _isEditMode ? widget.existingRequest!.deliveryLocation.latitude : 0.0, 
-          longitude: _isEditMode ? widget.existingRequest!.deliveryLocation.longitude : 0.0, 
-        ),
-        deliveryDeadline: _requestExpiryDate != null 
-            ? Timestamp.fromDate(_requestExpiryDate!) 
-            : Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
-        priceRangeMaxPerUnit: _targetPriceController.text.isNotEmpty 
-            ? double.tryParse(_targetPriceController.text) 
-            : null, 
-        currency: _currencyController.text,
-        notesForFarmer: _notesController.text.isNotEmpty ? _notesController.text : null, 
-        status: _isEditMode 
-            ? widget.existingRequest!.status // Preserve status on edit, or decide if it should reset
-            : BuyerRequestStatus.pending_match, 
-        lastUpdated: Timestamp.now(), // Always update lastUpdated
-        // isAiMatchPreferred will use existing value or default from constructor
-        isAiMatchPreferred: _isEditMode 
-            ? widget.existingRequest!.isAiMatchPreferred 
-            : true, // Default for new, or carry over existing
-        // fulfilledByOrderIds and totalQuantityFulfilled should be preserved if editing
-        fulfilledByOrderIds: _isEditMode ? widget.existingRequest!.fulfilledByOrderIds : [],
-        totalQuantityFulfilled: _isEditMode ? widget.existingRequest!.totalQuantityFulfilled : 0.0,
-      );
-
-      try {
-        if (_isEditMode) {
-          await firestoreService.updateBuyerRequest(requestData);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Buyer request updated successfully!')),
-            );
-            Navigator.of(context).pop();
-          }
-        } else {
-          await firestoreService.addBuyerRequest(requestData);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Buyer request submitted successfully!')),
-            );
-            Navigator.of(context).pop();
-          }
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error submitting request: \$e')),
-          );
-        }
-      } finally {
-        if (mounted) {
-          setState(() { _isLoading = false; });
-        }
-      }
+    if (!_formKey.currentState!.validate()) {
+      return;
     }
+    _formKey.currentState!.save(); // Ensure onSaved callbacks are triggered
+
+    setState(() { _isLoading = true; });
+
+    final firestoreService = Provider.of<FirestoreService>(context, listen: false);
+    final firebaseCurrentUser = FirebaseAuth.instance.currentUser;
+
+    if (firebaseCurrentUser == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: User not logged in.')),
+        );
+      }
+      setState(() { _isLoading = false; });
+      return;
+    }
+    
+    // Use AppUser from state if available (especially for new requests to get buyerName)
+    // Fallback to FirebaseAuth.instance.currentUser for uid/email if AppUser isn't loaded
+    final buyerUid = firebaseCurrentUser.uid;
+    final buyerDisplayName = _isEditMode 
+        ? widget.existingRequest!.buyerName // Preserve original buyerName on edit
+        : (_currentUser?.displayName ?? firebaseCurrentUser.displayName ?? firebaseCurrentUser.email ?? 'Unknown Buyer');
+
+
+    String effectiveProduceNeededName = _produceNameController.text;
+    String effectiveProduceNeededCategory = _selectedProduceCategory.displayName;
+
+    if (_selectedProduceCategory == ProduceCategory.other) {
+      effectiveProduceNeededName = _customCategoryController.text;
+    }
+    
+    final requestData = BuyerRequest(
+      id: _isEditMode ? widget.existingRequest!.id : null,
+      buyerId: buyerUid,
+      buyerName: buyerDisplayName,
+      requestDateTime: _isEditMode 
+          ? widget.existingRequest!.requestDateTime 
+          : Timestamp.now(),
+      produceNeededName: effectiveProduceNeededName, 
+      produceNeededCategory: effectiveProduceNeededCategory, 
+      quantityNeeded: double.tryParse(_quantityController.text) ?? 0, 
+      quantityUnit: _unitController.text, 
+      deliveryLocation: LocationData( 
+        barangay: _barangayController.text.isNotEmpty ? _barangayController.text : null,
+        municipality: _municipalityController.text.isNotEmpty ? _municipalityController.text : null,
+        addressHint: _deliveryAddressDetailsController.text.isNotEmpty 
+            ? _deliveryAddressDetailsController.text 
+            : null,
+        latitude: _isEditMode ? (widget.existingRequest!.deliveryLocation.latitude) : (_loadedDefaultLat ?? 0.0), 
+        longitude: _isEditMode ? (widget.existingRequest!.deliveryLocation.longitude) : (_loadedDefaultLng ?? 0.0), 
+      ),
+      deliveryDeadline: _requestExpiryDate != null 
+          ? Timestamp.fromDate(_requestExpiryDate!) 
+          : Timestamp.fromDate(DateTime.now().add(const Duration(days: 7))),
+      priceRangeMaxPerUnit: _targetPriceController.text.isNotEmpty 
+          ? double.tryParse(_targetPriceController.text) 
+          : null, 
+      currency: _currencyController.text,
+      notesForFarmer: _notesController.text.isNotEmpty ? _notesController.text : null, 
+      status: _isEditMode 
+          ? widget.existingRequest!.status
+          : BuyerRequestStatus.pending_match, 
+      lastUpdated: Timestamp.now(),
+      isAiMatchPreferred: _isEditMode 
+          ? widget.existingRequest!.isAiMatchPreferred 
+          : true,
+      fulfilledByOrderIds: _isEditMode ? widget.existingRequest!.fulfilledByOrderIds : [],
+      totalQuantityFulfilled: _isEditMode ? widget.existingRequest!.totalQuantityFulfilled : 0.0,
+    );
+
+    try {
+      if (_isEditMode) {
+        await firestoreService.updateBuyerRequest(requestData);
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request updated successfully!')));
+      } else {
+        await firestoreService.addBuyerRequest(requestData);
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request added successfully!')));
+      }
+      if(mounted) Navigator.of(context).pop();
+    } catch (e) {
+      debugPrint("Error submitting request: $e");
+      if(mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to submit request: ${e.toString()}')),
+        );
+      }
+    } finally {
+      if(mounted) setState(() { _isLoading = false; });
+    }
+  }
+
+  Widget _buildSectionHeader(BuildContext context, String title) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 24.0, bottom: 8.0),
+      child: Text(
+        title,
+        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+          color: Theme.of(context).colorScheme.primary,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create Produce Request'),
+        title: Text(_isEditMode ? 'Edit Produce Request' : 'Make a Produce Request'),
+        elevation: 1,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(16.0),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: <Widget>[
-                    TextFormField(
-                      controller: _produceNameController,
-                      decoration: const InputDecoration(labelText: 'Produce Name'),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter the produce name';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<ProduceCategory>(
-                      value: _selectedProduceCategory,
-                      decoration: const InputDecoration(labelText: 'Produce Category'),
-                      items: ProduceCategory.values.map((ProduceCategory category) {
-                        return DropdownMenuItem<ProduceCategory>(
-                          value: category,
-                          child: Text(category.displayName),
-                        );
-                      }).toList(),
-                      onChanged: (ProduceCategory? newValue) {
-                        setState(() {
-                          if (newValue != null) {
-                            _selectedProduceCategory = newValue;
-                            _showCustomCategory = (newValue == ProduceCategory.other);
-                          }
-                        });
-                      },
-                      validator: (value) => value == null ? 'Please select a category' : null,
-                    ),
-                    if (_showCustomCategory)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8.0),
-                        child: TextFormField(
-                          controller: _customCategoryController,
-                          decoration: const InputDecoration(labelText: 'Custom Category Name'),
-                          validator: (value) {
-                            if (_showCustomCategory && (value == null || value.isEmpty)) {
-                              return 'Please enter the custom category name';
-                            }
-                            return null;
+      body: _isLoadingUserDetails && !_isEditMode
+        ? const Center(child: CircularProgressIndicator())
+        : Form(
+          key: _formKey,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                // Produce Details Section
+                _buildSectionHeader(context, 'Produce Details'),
+                Card(
+                  elevation: 0,
+                  color: colorScheme.surfaceContainerLow,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        DropdownButtonFormField<ProduceCategory>(
+                          value: _selectedProduceCategory,
+                          decoration: const InputDecoration(labelText: 'Produce Category', border: OutlineInputBorder()),
+                          items: ProduceCategory.values.map((ProduceCategory category) {
+                            return DropdownMenuItem<ProduceCategory>(
+                              value: category,
+                              child: Text(category.displayName),
+                            );
+                          }).toList(),
+                          onChanged: (ProduceCategory? newValue) {
+                            setState(() {
+                              _selectedProduceCategory = newValue!;
+                              _showCustomCategory = (_selectedProduceCategory == ProduceCategory.other);
+                              if (!_showCustomCategory) _customCategoryController.clear();
+                              else _produceNameController.clear(); // Clear produce name if "Other" is selected
+                            });
                           },
+                           validator: (value) => value == null ? 'Please select a category' : null,
                         ),
-                      ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _quantityController,
-                      decoration: const InputDecoration(labelText: 'Desired Quantity'),
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^[0-9]+.?[0-9]*'))],
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return 'Please enter quantity';
-                        if (double.tryParse(value) == null || double.parse(value) <= 0) return 'Enter a valid quantity';
-                        return null;
-                      },
+                        if (_showCustomCategory) ...[
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _customCategoryController,
+                            decoration: const InputDecoration(labelText: 'Custom Produce Name/Category', border: OutlineInputBorder()),
+                            validator: (value) => _showCustomCategory && (value == null || value.isEmpty) ? 'Please enter custom produce name' : null,
+                            onSaved: (value) => _customCategoryController.text = value ?? '',
+                          ),
+                        ] else ...[
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _produceNameController,
+                            decoration: const InputDecoration(labelText: 'Produce Name (e.g., Tomatoes, Apples)', border: OutlineInputBorder()),
+                            validator: (value) => !_showCustomCategory && (value == null || value.isEmpty) ? 'Please enter produce name' : null,
+                            onSaved: (value) => _produceNameController.text = value ?? '',
+                          ),
+                        ],
+                      ],
                     ),
-                     const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _unitController,
-                      decoration: const InputDecoration(labelText: 'Unit (e.g., kg, piece, sack)'),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return 'Please enter unit';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _targetPriceController,
-                      decoration: const InputDecoration(labelText: 'Target Price per Unit (Optional)'),
-                      keyboardType: TextInputType.numberWithOptions(decimal: true),
-                      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^[0-9]+.?[0-9]*'))],
-                       validator: (value) {
-                        if (value != null && value.isNotEmpty) {
-                           if (double.tryParse(value) == null || double.parse(value) <= 0) return 'Enter a valid price or leave empty';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                     TextFormField(
-                      controller: _currencyController,
-                      decoration: const InputDecoration(labelText: 'Currency'),
-                       validator: (value) {
-                        if (value == null || value.isEmpty) return 'Please enter currency';
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 24),
-                    Text('Preferred Delivery Location', style: Theme.of(context).textTheme.titleMedium),
-                    TextFormField(
-                      controller: _barangayController,
-                      decoration: const InputDecoration(labelText: 'Barangay'),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return 'Please enter barangay';
-                        return null;
-                      },
-                    ),
-                    TextFormField(
-                      controller: _municipalityController,
-                      decoration: const InputDecoration(labelText: 'Municipality / City'),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) return 'Please enter municipality/city';
-                        return null;
-                      },
-                    ),
-                     TextFormField(
-                      controller: _deliveryAddressDetailsController,
-                      decoration: const InputDecoration(labelText: 'Address Hint / Landmark (Optional)'),
-                    ),
-                    const SizedBox(height: 24),
-                    Text('Request Options', style: Theme.of(context).textTheme.titleMedium),
-                     ListTile(
-                      title: Text(_requestExpiryDate == null
-                          ? 'Set Request Expiry Date (Optional)'
-                          : 'Request Valid Until: ${DateFormat.yMd().format(_requestExpiryDate!)}'),
-                      trailing: const Icon(Icons.calendar_today),
-                      onTap: () => _selectExpiryDate(context),
-                    ),
-                    TextFormField(
-                      controller: _notesController,
-                      decoration: const InputDecoration(labelText: 'Additional Notes (Optional)', alignLabelWithHint: true),
-                      maxLines: 3,
-                    ),
-                    const SizedBox(height: 24),
-                    Center(
-                      child: ElevatedButton(
-                        onPressed: _isLoading ? null : _submitForm,
-                        style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15)),
-                        child: _isLoading
-                            ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Text('Submit Request'),
-                      ),
-                    ),
-                  ],
+                  )
                 ),
-              ),
+
+                // Quantity and Unit Section
+                _buildSectionHeader(context, 'Quantity & Unit'),
+                 Card(
+                  elevation: 0,
+                  color: colorScheme.surfaceContainerLow,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                         Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _quantityController,
+                                decoration: const InputDecoration(labelText: 'Quantity Needed', border: OutlineInputBorder()),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^[0-9]+.?[0-9]*'))],
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) return 'Enter quantity';
+                                  if (double.tryParse(value) == null || double.parse(value) <= 0) return 'Invalid quantity';
+                                  return null;
+                                },
+                                onSaved: (value) => _quantityController.text = value ?? '',
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _unitController,
+                                decoration: const InputDecoration(labelText: 'Unit (e.g., kg, piece)', border: OutlineInputBorder()),
+                                validator: (value) => (value == null || value.isEmpty) ? 'Enter unit' : null,
+                                onSaved: (value) => _unitController.text = value ?? '',
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  )
+                ),
+
+                // Delivery Location Section
+                _buildSectionHeader(context, 'Preferred Delivery Location'),
+                 Card(
+                  elevation: 0,
+                  color: colorScheme.surfaceContainerLow,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        TextFormField(
+                          controller: _deliveryAddressDetailsController,
+                          decoration: const InputDecoration(labelText: 'Street Address / Landmark (Optional)', border: OutlineInputBorder()),
+                           onSaved: (value) => _deliveryAddressDetailsController.text = value ?? '',
+                        ),
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _barangayController,
+                                decoration: const InputDecoration(labelText: 'Barangay', border: OutlineInputBorder()),
+                                validator: (value) => (value == null || value.isEmpty) ? 'Enter barangay' : null,
+                                onSaved: (value) => _barangayController.text = value ?? '',
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _municipalityController,
+                                decoration: const InputDecoration(labelText: 'Municipality/City', border: OutlineInputBorder()),
+                                validator: (value) => (value == null || value.isEmpty) ? 'Enter municipality/city' : null,
+                                onSaved: (value) => _municipalityController.text = value ?? '',
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (!_isEditMode && (_loadedDefaultLat == null || _loadedDefaultLng == null) && !_isLoadingUserDetails)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8.0),
+                            child: Text(
+                              'No default address found. Please enter manually. You can set a default address in the "Available Produce" tab.',
+                              style: TextStyle(color: colorScheme.onSurfaceVariant.withOpacity(0.7)),
+                            ),
+                          ),
+                      ],
+                    ),
+                  )
+                ),
+
+                // Optional Details Section
+                _buildSectionHeader(context, 'Optional Details'),
+                 Card(
+                  elevation: 0,
+                  color: colorScheme.surfaceContainerLow,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _targetPriceController,
+                                decoration: const InputDecoration(labelText: 'Target Price per Unit', border: OutlineInputBorder()),
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'^[0-9]+.?[0-9]*'))],
+                                validator: (value) {
+                                  if (value != null && value.isNotEmpty) {
+                                    if (double.tryParse(value) == null || double.parse(value) <= 0) return 'Enter a valid price or leave empty';
+                                  }
+                                  return null;
+                                },
+                                onSaved: (value) => _targetPriceController.text = value ?? '',
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _currencyController,
+                                decoration: const InputDecoration(labelText: 'Currency', border: OutlineInputBorder()),
+                                validator: (value) => (value == null || value.isEmpty) ? 'Enter currency' : null,
+                                onSaved: (value) => _currencyController.text = value ?? '',
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        TextFormField(
+                          controller: _notesController,
+                          decoration: const InputDecoration(labelText: 'Notes for Farmer (e.g., specific variety, preferred condition)', border: OutlineInputBorder()),
+                          maxLines: 3,
+                          onSaved: (value) => _notesController.text = value ?? '',
+                        ),
+                        const SizedBox(height: 16),
+                        ListTile(
+                          title: const Text('Request Expiry Date (Optional)'),
+                          subtitle: Text(_requestExpiryDate == null ? 'No expiry date set (defaults to 7 days)' : DateFormat.yMMMd().format(_requestExpiryDate!)),
+                          trailing: const Icon(Icons.calendar_today),
+                          onTap: () => _selectExpiryDate(context),
+                          contentPadding: EdgeInsets.zero,
+                        ),
+                      ],
+                    ),
+                  )
+                ),
+                
+                const SizedBox(height: 30),
+                Center(
+                  child: _isLoading
+                      ? const CircularProgressIndicator()
+                      : ElevatedButton.icon(
+                          icon: Icon(_isEditMode ? Icons.save_alt_outlined : Icons.add_shopping_cart_outlined),
+                          label: Text(_isEditMode ? 'Update Request' : 'Submit Request'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: colorScheme.primary,
+                            foregroundColor: colorScheme.onPrimary,
+                            padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 15),
+                            textStyle: Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 16),
+                          ),
+                          onPressed: _submitForm,
+                        ),
+                ),
+                 const SizedBox(height: 20), // Bottom padding
+              ],
             ),
+          ),
+        ),
     );
   }
 } 
