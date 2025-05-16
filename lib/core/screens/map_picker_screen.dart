@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' if (dart.library.html) 'dart:html' as platform;
+import 'package:animo/env_config.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -8,7 +9,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import '../../env_config.dart';
 import '../services/map_picker_helper_web.dart' if (dart.library.io) '../services/map_picker_helper_mobile.dart';
 
 
