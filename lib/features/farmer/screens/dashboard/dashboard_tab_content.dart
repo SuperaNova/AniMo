@@ -112,7 +112,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     }
 
     return Container(
-      color: colorScheme.inverseSurface,
+      color: colorScheme.surface,
       child: SingleChildScrollView(
         child: Column(
           children: [
@@ -129,14 +129,12 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
               ),
             ),
             Container(
-              color: colorScheme.surfaceContainerLow,
+              color: colorScheme.surface,
               child: Column(
-                mainAxisSize: MainAxisSize.min,
                 children: [
                   // Unified card for pending confirmation and active orders
                   _buildUnifiedOrdersPromptCard(context, widget.firestoreService, colorScheme),
-                  _buildRecentCompletedOrdersSection(context, widget.firebaseAuthService, widget.firestoreService, widget.produceListingService, colorScheme),
-                  const SizedBox(height: 80),
+                  _buildRecentCompletedOrdersSection(context, widget.firebaseAuthService, widget.firestoreService, widget.produceListingService, colorScheme)
                 ],
               ),
             ),
@@ -223,7 +221,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
               painter: SimplifiedGraphPainter(
                   line1Color: colorScheme.surface.withOpacity(0.3),
                   line2Color: colorScheme.tertiary.withOpacity(0.7),
-                  pointColor: colorScheme.secondary
+                  pointColor: colorScheme.inversePrimary
               ),
               child: Container(),
             ),
@@ -241,7 +239,7 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
                     height: 4,
                     width: 4,
                     decoration: BoxDecoration(
-                      color: colorScheme.secondary,
+                      color: colorScheme.inversePrimary,
                       shape: BoxShape.circle,
                     ),
                   )
@@ -468,81 +466,88 @@ class _DashboardTabContentState extends State<DashboardTabContent> with SingleTi
     Stream<List<Order>> stream = firestoreService.getFarmerOrders();
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Recently Completed Orders',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          StreamBuilder<List<Order>>(
-            stream: stream,
-            builder: (context, orderSnapshot) {
-              if (orderSnapshot.connectionState == ConnectionState.waiting) {
-                return Center(child: CircularProgressIndicator(color: colorScheme.primary));
-              }
-              if (orderSnapshot.hasError) {
-                if (kDebugMode) {
-                  print("Error in RecentCompletedOrders StreamBuilder: ${orderSnapshot.error}");
+      padding: const EdgeInsets.fromLTRB(16,16,16,8),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(16,16,16,8),
+        decoration: BoxDecoration(
+          color: colorScheme.surfaceContainer,
+          borderRadius: const BorderRadius.all(Radius.circular(20))
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Recently Completed Orders',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: colorScheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            StreamBuilder<List<Order>>(
+              stream: stream,
+              builder: (context, orderSnapshot) {
+                if (orderSnapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator(color: colorScheme.primary));
                 }
-                return Center(child: Text('Error loading orders: ${orderSnapshot.error?.toString()}', style: TextStyle(color: colorScheme.error)));
-              }
-              if (!orderSnapshot.hasData || orderSnapshot.data!.isEmpty) {
-                return Center(child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text('No orders found yet.', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                ));
-              }
+                if (orderSnapshot.hasError) {
+                  if (kDebugMode) {
+                    print("Error in RecentCompletedOrders StreamBuilder: ${orderSnapshot.error}");
+                  }
+                  return Center(child: Text('Error loading orders: ${orderSnapshot.error?.toString()}', style: TextStyle(color: colorScheme.error)));
+                }
+                if (!orderSnapshot.hasData || orderSnapshot.data!.isEmpty) {
+                  return Center(child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text('No orders found yet.', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                  ));
+                }
 
-              List<Order> completedOrders = orderSnapshot.data!
-                  .where((order) => order.status == OrderStatus.completed)
-                  .toList();
+                List<Order> completedOrders = orderSnapshot.data!
+                    .where((order) => order.status == OrderStatus.completed)
+                    .toList();
 
-              completedOrders.sort((a, b) => b.lastUpdated.compareTo(a.lastUpdated));
+                completedOrders.sort((a, b) => b.lastUpdated.compareTo(a.lastUpdated));
 
-              if (completedOrders.isEmpty) {
-                return Center(child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Text('No recent completed orders.', style: TextStyle(color: colorScheme.onSurfaceVariant)),
-                ));
-              }
+                if (completedOrders.isEmpty) {
+                  return Center(child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Text('No recent completed orders.', style: TextStyle(color: colorScheme.onSurfaceVariant)),
+                  ));
+                }
 
-              final itemCountToShow = math.min(completedOrders.length, 3);
+                final itemCountToShow = math.min(completedOrders.length, 3);
 
-              return ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: itemCountToShow,
-                itemBuilder: (context, index) {
-                  final order = completedOrders[index];
-                  return FutureBuilder<ProduceListing?>(
-                    // Use widget.produceListingService or widget.firestoreService
-                    // depending on where getProduceListingById is defined.
-                    // Assuming it's on widget.firestoreService as per your constructor.
-                    future: widget.produceListingService.getProduceListingById(order.produceListingId),
-                    builder: (context, listingSnapshot) {
-                      ProduceListing? produceListing = listingSnapshot.data;
-                      return _buildCompletedOrderItem(
-                        context: context,
-                        order: order,
-                        produceListing: produceListing,
-                        colorScheme: colorScheme,
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          )
-        ],
-      ),
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: itemCountToShow,
+                  itemBuilder: (context, index) {
+                    final order = completedOrders[index];
+                    return FutureBuilder<ProduceListing?>(
+                      // Use widget.produceListingService or widget.firestoreService
+                      // depending on where getProduceListingById is defined.
+                      // Assuming it's on widget.firestoreService as per your constructor.
+                      future: widget.produceListingService.getProduceListingById(order.produceListingId),
+                      builder: (context, listingSnapshot) {
+                        ProduceListing? produceListing = listingSnapshot.data;
+                        return _buildCompletedOrderItem(
+                          context: context,
+                          order: order,
+                          produceListing: produceListing,
+                          colorScheme: colorScheme,
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            )
+          ],
+        ),
+      )
     );
   }
 
